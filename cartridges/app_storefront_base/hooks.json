@@ -1,0 +1,40 @@
+{
+    "hooks": [
+        {
+            "name": "dw.order.calculate",
+            "script": "./cartridge/scripts/hooks/cart/calculate.js"
+        },
+        {
+            "name": "dw.order.calculateShipping",
+            "script": "./cartridge/scripts/hooks/cart/calculate.js"
+        },
+        {
+            "name": "app.basket.taxes",
+            "script": "./cartridge/scripts/hooks/taxes.js"
+        },
+        {
+            "name": "dw.order.calculateTax",
+            "script": "./cartridge/scripts/hooks/cart/calculate.js"
+        },
+        {
+            "name": "app.payment.processor.default",
+            "script": "./cartridge/scripts/hooks/payment/processor/default"
+        },
+        {
+            "name": "app.payment.processor.basic_credit",
+            "script": "./cartridge/scripts/hooks/payment/processor/basic_credit"
+        },
+        {
+            "name": "app.validate.basket",
+            "script": "./cartridge/scripts/hooks/validateBasket"
+        },
+        {
+            "name": "app.validate.order",
+            "script": "./cartridge/scripts/hooks/validateOrder"
+        },
+        {
+            "name": "app.fraud.detection",
+            "script": "./cartridge/scripts/hooks/fraudDetection"
+        }
+    ]
+}
