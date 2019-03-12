@@ -63,7 +63,7 @@ function createDiscountObject(collection, discounts) {
                 lineItemText: item.lineItemText,
                 price: formatMoney(item.price),
                 type: 'promotion',
-                callOutMsg: item.promotion.calloutMsg
+                callOutMsg: item.promotion && item.promotion.calloutMsg ? item.promotion.calloutMsg : ""
             };
         }
     });

@@ -1,7 +1,9 @@
 <isif condition="${product.promotions}">
     <isloop items="${product.promotions}" var="promotion">
-        <div class="callout" title="${promotion.details}">
-            ${promotion.calloutMsg}
-        </div>
+        <isif condition="${!empty(promotion.calloutMsg)}">
+            <div class="callout pb-1 pt-1" title="${promotion.details}">
+                <span class="fa fa-tags product-promotion-icon"></span>${promotion.calloutMsg}
+            </div>
+        </isif>
     </isloop>
 </isif>

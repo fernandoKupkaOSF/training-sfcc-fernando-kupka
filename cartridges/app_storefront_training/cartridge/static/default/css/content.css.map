@@ -1,0 +1,1 @@
+{"version":3,"sources":["webpack:///./cartridges/app_storefront_training/cartridge/client/default/css/cartridges/app_storefront_training/cartridge/client/default/css/content.scss"],"names":[],"mappings":"AAAA;EACI,gDAA+C,EAClD","file":"default/css/content.css","sourcesContent":[".content-page-image {\n    background-image: url(../../images/account.jpg);\n}\n"],"sourceRoot":""}

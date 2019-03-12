@@ -214,10 +214,6 @@ server.get(
             {
                 htmlValue: Resource.msg('page.title.myaccount', 'account', null),
                 url: URLUtils.url('Account-Show').toString()
-            },
-            {
-                htmlValue: Resource.msg('label.orderhistory', 'account', null),
-                url: URLUtils.url('Order-History').toString()
             }
         ];
 

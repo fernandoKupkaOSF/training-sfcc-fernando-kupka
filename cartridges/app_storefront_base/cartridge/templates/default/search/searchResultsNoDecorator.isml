@@ -16,7 +16,7 @@
         </isif>
     </h1>
 </div>
-<div class="container search-results">
+<div class="container-fluid search-results">
     <div class="row search-nav">
         <isif condition="${!pdict.productSearch.isCategorySearch}">
             <div class="nav-tabs-wrapper">

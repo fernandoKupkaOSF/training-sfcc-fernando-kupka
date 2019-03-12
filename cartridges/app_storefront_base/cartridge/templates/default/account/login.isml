@@ -1,3 +1,5 @@
+<isinclude template="components/modules" />
+
 <isdecorate template="common/layout/page">
     <isscript>
         var assets = require('*/cartridge/scripts/assets.js');
