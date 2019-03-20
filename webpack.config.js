@@ -118,4 +118,4 @@ class WebpackBundle {
     }
 }
 
-module.exports = [WebpackBundle.forCartridge("app_training")];
+module.exports = [WebpackBundle.forCartridge("app_storefront_training")];
