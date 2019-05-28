@@ -12,7 +12,7 @@
 # Getting Started
 ---------------
 
-1. Clone this repository to your local machine and follow instructions here to configure it properly: https://osfsupport.atlassian.net/wiki/spaces/TRA/pages/308543489/SFRA+Basics
+1. Clone this repository to your local machine and follow instructions here to configure it properly: https://learninghub.osf.digital/course/view.php?id=29
 2. Run `yarn install` to install all of the local dependancies
 2. Run `yarn run compile:fonts` to compile and move all fonts inside app_storefront_training static folder
 3. Run `yarn run webpack:dev` to start watching for file changes and compile JS and SCSS files when that happens
