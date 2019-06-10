@@ -6,7 +6,7 @@ var chaiSubset = require('chai-subset');
 chai.use(chaiSubset);
 
 describe('Add Product variants to cart', function () {
-    this.timeout(6000);
+    this.timeout(5000);
 
     it('should add variants of different and same products, returns total quantity of added items', function () {
         var cookieJar = request.jar();

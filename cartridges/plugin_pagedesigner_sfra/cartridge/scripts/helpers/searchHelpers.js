@@ -1,7 +1,5 @@
 'use strict';
 
-var coreSearchHelper = module.superModule;
-
 /**
  * Set content search configuration values
  *
@@ -25,8 +23,5 @@ function setupContentSearch(params) {
     return contentSearch;
 }
 
-
-exports.setupSearch = coreSearchHelper.setupSearch;
-exports.getCategoryTemplate = coreSearchHelper.getCategoryTemplate;
+module.exports = module.superModule;
 exports.setupContentSearch = setupContentSearch;
-exports.search = coreSearchHelper.search;

@@ -1,11 +1,23 @@
 var ImageTransformation = {};
+var BREAKPOINTS = require('*/cartridge/experience/breakpoints.json');
+var Image = require('dw/experience/image/Image');
+var MediaFile = require('dw/content/MediaFile');
 
-// device specific breakpoint widths
-var BREAKPOINTS = {
-    mobile  : 768,
-    desktop : 1440
-};
-
+var transformationCapabilities = [
+    'scaleWidth',
+    'scaleHeight',
+    'scaleMode',
+    'imageX',
+    'imageY',
+    'imageURI',
+    'cropX',
+    'cropY',
+    'cropWidth',
+    'cropHeight',
+    'format',
+    'quality',
+    'strip'
+];
 /**
  * Calculates the required DIS transformation object based on the given parameters. Currently
  * only downscaling is performed.
@@ -30,17 +42,40 @@ ImageTransformation.scale = function (metaData, device) {
 };
 
 /**
+ * Creates a cleaned up transformation object
+ * @param {*} options the paarmaters object which may hold additional properties not suppoerted by DIS e.g. option.device == 'mobile'
+ * @param {*} transform a preconstructed transformation object
+ */
+function constructTransformationObject(options, transform) {
+    var result = transform || {};
+    Object.keys(options).forEach(function (element) {
+        if (transformationCapabilities.indexOf(element)) {
+            result[element] = options[element];
+        }
+    });
+    return result;
+}
+
+/**
  * Provides a url to the given media file image. DIS transformation will be applied as given.
  *
- * @param {Object} image the image for which the url should be obtained
- * @param {Object} transform the (optional) DIS transformation parameters
+ * @param {Image|MediaFile} image the image for which the url should be obtained. In case of an Image type the options may add a device property to scale the image to
+ * @param {Object} options the (optional) DIS transformation parameters or option with devices
  */
-ImageTransformation.url = function (image, transform) {
-    if (transform) {
-        return image.getImageURL(transform);
+ImageTransformation.url = function (image, options) {
+    var transform = {};
+    var mediaFile = image instanceof MediaFile ? image : image.file;
+
+    if (image instanceof Image && options.device) {
+        transform = ImageTransformation.scale(image.metaData, options.device);
+    }
+    transform = constructTransformationObject(options, transform);
+
+    if (transform && Object.keys(transform).length) {
+        return mediaFile.getImageURL(transform);
     }
 
-    return image.getAbsURL();
+    return mediaFile.getAbsURL();
 };
 
 module.exports = ImageTransformation;

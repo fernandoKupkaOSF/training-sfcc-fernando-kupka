@@ -28,13 +28,10 @@ module.exports.render = function (context) {
     model.text_alignment = content.text_alignment == 'Left' ? 'left' : 'center';
 
     if (content.image) {
-        var mobileImageTransformation = ImageTransformation.scale(content.image.metaData, 'mobile');
-        var desktopImageTransformation = ImageTransformation.scale(content.image.metaData, 'desktop');
-
         model.image = {
             src: {
-                mobile  : ImageTransformation.url(content.image.file, mobileImageTransformation),
-                desktop : ImageTransformation.url(content.image.file, desktopImageTransformation)
+                mobile  : ImageTransformation.url(content.image, { device: 'mobile' }),
+                desktop : ImageTransformation.url(content.image, { device: 'desktop' })
             },
             alt         : content.image.file.getAlt(),
             focalPointX : content.image.focalPoint.x * 100 + '%',
