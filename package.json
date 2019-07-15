@@ -37,6 +37,7 @@
     "gulp": "^4.0.0",
     "gulp-eslint": "^4.0.2",
     "gulp-stylelint": "^7.0.0",
+    "js-yaml": "^3.13.1",
     "mini-css-extract-plugin": "^0.4.1",
     "minimatch": "^3.0.4",
     "node-sass": "^4.9.0",
