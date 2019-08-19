@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<metadata xmlns="http://www.demandware.com/xml/impex/metadata/2006-10-31">
+    <type-extension type-id="SitePreferences">
+        <custom-attribute-definitions>
+            <attribute-definition attribute-id="sfraEnableOverlayApplePay">
+                <display-name xml:lang="x-default">SFRA - Enable Apple Pay</display-name>
+                <description xml:lang="x-default">Enables the Apple Pay plugin in the SFRA Unified Feature Cartridge. Note: The cartridge plugin_applepay must be added to the cartridge path and uploaded to your instance.</description>
+                <type>boolean</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>true</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="sfraEnableOverlayDataDownload">
+                <display-name xml:lang="x-default">SFRA - Enable Data Download</display-name>
+                <description xml:lang="x-default">Enables the Data Download plugin in the SFRA Unified Feature Cartridge. Note: The cartridge plugin_datadownload must be added to the cartridge path and uploaded to your instance.</description>
+                <type>boolean</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>true</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="sfraEnableOverlayGiftRegistry">
+                <display-name xml:lang="x-default">SFRA - Enable Gift Registry</display-name>
+                <description xml:lang="x-default">Enables the Gift Registry plugin in the SFRA Unified Feature Cartridge. Note: The cartridge plugin_giftregistry must be added to the cartridge path and uploaded to your instance.</description>
+                <type>boolean</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>true</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="sfraEnableOverlayInStorePickup">
+                <display-name xml:lang="x-default">SFRA - Enable In Store Pickup</display-name>
+                <description xml:lang="x-default">Enables the In Store Pickup Plugin in the SFRA Unified Feature Cartridge. Note: The plugin_instorepickup must be added to the cartridge path and uploaded to your instance.</description>
+                <type>boolean</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>true</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="sfraEnableOverlayProductCompare">
+                <display-name xml:lang="x-default">SFRA - Enable Product Compare</display-name>
+                <description xml:lang="x-default">Enables the Product Compare plugin in the SFRA Unified Feature Cartridge. Note: The cartridge plugin_productcompare must be added to the cartridge path and uploaded to your instance.</description>
+                <type>boolean</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>true</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="sfraEnableOverlayWishlist">
+                <display-name xml:lang="x-default">SFRA - Enable Wishlist</display-name>
+                <description xml:lang="x-default">Enables the Wishlist plugin in the SFRA Unified Feature Cartridge. Note: The cartridge plugin_wishlists must be added to the cartridge path and uploaded to your instance.</description>
+                <type>boolean</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>true</default-value>
+            </attribute-definition>
+        </custom-attribute-definitions>
+        <group-definitions>
+            <attribute-group group-id="SFRA Unified Feature Cartridge">
+                <display-name xml:lang="x-default">SFRA Unified Feature Cartridge</display-name>
+                <attribute attribute-id="sfraEnableOverlayInStorePickup"/>
+                <attribute attribute-id="sfraEnableOverlayDataDownload"/>
+                <attribute attribute-id="sfraEnableOverlayWishlist"/>
+                <attribute attribute-id="sfraEnableOverlayGiftRegistry"/>
+                <attribute attribute-id="sfraEnableOverlayApplePay"/>
+                <attribute attribute-id="sfraEnableOverlayProductCompare"/>
+            </attribute-group>
+        </group-definitions>
+    </type-extension>
+</metadata>
