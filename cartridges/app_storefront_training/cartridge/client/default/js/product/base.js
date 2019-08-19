@@ -1,4 +1,5 @@
 'use strict';
+var focusHelper = require('../components/focus');
 
 /**
  * Retrieves the relevant pid value
@@ -51,23 +52,26 @@ function getQuantitySelected($el) {
  *     selected.  If there is no variant that corresponds to a specific combination of attribute
  *     values, an attribute may be disabled in the Product Detail Page
  * @param {jQuery} $productContainer - DOM container for a given product
+ * @param {Object} msgs - object containing resource messages
  */
-function processSwatchValues(attr, $productContainer) {
+function processSwatchValues(attr, $productContainer, msgs) {
     attr.values.forEach(function (attrValue) {
         var $attrValue = $productContainer.find('[data-attr="' + attr.id + '"] [data-attr-value="' +
             attrValue.value + '"]');
-        var $swatchAnchor = $attrValue.parent();
+        var $swatchButton = $attrValue.parent();
 
         if (attrValue.selected) {
             $attrValue.addClass('selected');
+            $attrValue.siblings('.selected-assistive-text').text(msgs.assistiveSelectedText);
         } else {
             $attrValue.removeClass('selected');
+            $attrValue.siblings('.selected-assistive-text').empty();
         }
 
         if (attrValue.url) {
-            $swatchAnchor.attr('href', attrValue.url);
+            $swatchButton.attr('data-url', attrValue.url);
         } else {
-            $swatchAnchor.removeAttr('href');
+            $swatchButton.removeAttr('data-url');
         }
 
         // Disable if not selectable
@@ -114,14 +118,15 @@ function processNonSwatchValues(attr, $productContainer) {
  * @param {Object} attrs - Attribute
  * @param {string} attr.id - Attribute ID
  * @param {jQuery} $productContainer - DOM element for a given product
+ * @param {Object} msgs - object containing resource messages
  */
-function updateAttrs(attrs, $productContainer) {
+function updateAttrs(attrs, $productContainer, msgs) {
     // Currently, the only attribute type that has image swatches is Color.
     var attrsWithSwatches = ['color'];
 
     attrs.forEach(function (attr) {
         if (attrsWithSwatches.indexOf(attr.id) > -1) {
-            processSwatchValues(attr, $productContainer);
+            processSwatchValues(attr, $productContainer, msgs);
         } else {
             processNonSwatchValues(attr, $productContainer);
         }
@@ -139,10 +144,10 @@ function updateAvailability(response, $productContainer) {
     var availabilityValue = '';
     var availabilityMessages = response.product.availability.messages;
     if (!response.product.readyToOrder) {
-        availabilityValue = '<div>' + response.resources.info_selectforstock + '</div>';
+        availabilityValue = '<li><div>' + response.resources.info_selectforstock + '</div></li>';
     } else {
         availabilityMessages.forEach(function (message) {
-            availabilityValue += '<div>' + message + '</div>';
+            availabilityValue += '<li><div>' + message + '</div></li>';
         });
     }
 
@@ -234,6 +239,29 @@ function updateOptions(options, $productContainer) {
 }
 
 /**
+ * Dynamically creates Bootstrap carousel from response containing images
+ * @param {Object[]} imgs - Array of large product images,along with related information
+ * @param {jQuery} $productContainer - DOM element for a given product
+ */
+function createCarousel(imgs, $productContainer) {
+    var carousel = $productContainer.find('.carousel');
+    $(carousel).carousel('dispose');
+    var carouselId = $(carousel).attr('id');
+    $(carousel).empty().append('<ol class="carousel-indicators"></ol><div class="carousel-inner" role="listbox"></div><a class="carousel-control-prev" href="#' + carouselId + '" role="button" data-slide="prev"><span class="fa icon-prev" aria-hidden="true"></span><span class="sr-only">' + $(carousel).data('prev') + '</span></a><a class="carousel-control-next" href="#' + carouselId + '" role="button" data-slide="next"><span class="fa icon-next" aria-hidden="true"></span><span class="sr-only">' + $(carousel).data('next') + '</span></a>');
+    for (var i = 0; i < imgs.length; i++) {
+        $('<div class="carousel-item"><img src="' + imgs[i].url + '" class="d-block img-fluid" alt="' + imgs[i].alt + ' image number ' + parseInt(imgs[i].index, 10) + '" title="' + imgs[i].title + '" itemprop="image" /></div>').appendTo($(carousel).find('.carousel-inner'));
+        $('<li data-target="#' + carouselId + '" data-slide-to="' + i + '" class=""></li>').appendTo($(carousel).find('.carousel-indicators'));
+    }
+    $($(carousel).find('.carousel-item')).first().addClass('active');
+    $($(carousel).find('.carousel-indicators > li')).first().addClass('active');
+    if (imgs.length === 1) {
+        $($(carousel).find('.carousel-indicators, a[class^="carousel-control-"]')).detach();
+    }
+    $(carousel).carousel();
+    $($(carousel).find('.carousel-indicators')).attr('aria-hidden', true);
+}
+
+/**
  * Parses JSON from Ajax call made whenever an attribute value is [de]selected
  * @param {Object} response - response from Ajax call
  * @param {Object} response.product - Product object
@@ -250,7 +278,7 @@ function handleVariantResponse(response, $productContainer) {
         $productContainer.parents('.choose-bonus-product-dialog').length > 0;
     var isVaraint;
     if (response.product.variationAttributes) {
-        updateAttrs(response.product.variationAttributes, $productContainer);
+        updateAttrs(response.product.variationAttributes, $productContainer, response.resources);
         isVaraint = response.product.productType === 'variant';
         if (isChoiceOfBonusProducts && isVaraint) {
             $productContainer.parent('.bonus-product-item')
@@ -262,11 +290,8 @@ function handleVariantResponse(response, $productContainer) {
     }
 
     // Update primary images
-    var primaryImageUrls = response.product.images;
-    primaryImageUrls.large.forEach(function (imageUrl, idx) {
-        $productContainer.find('.primary-images').find('img').eq(idx)
-            .attr('src', imageUrl.url);
-    });
+    var primaryImageUrls = response.product.images.large;
+    createCarousel(primaryImageUrls, $productContainer);
 
     // Update pricing
     if (!isChoiceOfBonusProducts) {
@@ -395,7 +420,8 @@ function chooseBonusProducts(data) {
     }
 
     var htmlString = '<!-- Modal -->'
-        + '<div class="modal fade" id="chooseBonusProductModal" role="dialog">'
+        + '<div class="modal fade" id="chooseBonusProductModal" tabindex="-1" role="dialog">'
+        + '<span class="enter-message sr-only" ></span>'
         + '<div class="modal-dialog choose-bonus-product-dialog" '
         + 'data-total-qty="' + data.maxBonusItems + '"'
         + 'data-UUID="' + data.uuid + '"'
@@ -409,7 +435,10 @@ function chooseBonusProducts(data) {
         + '<div class="modal-content">'
         + '<div class="modal-header">'
         + '    <span class="">' + data.labels.selectprods + '</span>'
-        + '    <button type="button" class="close pull-right" data-dismiss="modal">&times;</button>'
+        + '    <button type="button" class="close pull-right" data-dismiss="modal">'
+        + '        <span aria-hidden="true">&times;</span>'
+        + '        <span class="sr-only"> </span>'
+        + '    </button>'
         + '</div>'
         + '<div class="modal-body"></div>'
         + '<div class="modal-footer"></div>'
@@ -422,10 +451,12 @@ function chooseBonusProducts(data) {
     $.ajax({
         url: bonusUrl,
         method: 'GET',
-        dataType: 'html',
-        success: function (html) {
-            var parsedHtml = parseHtml(html);
+        dataType: 'json',
+        success: function (response) {
+            var parsedHtml = parseHtml(response.renderedTemplate);
             $('#chooseBonusProductModal .modal-body').empty();
+            $('#chooseBonusProductModal .enter-message').text(response.enterDialogMessage);
+            $('#chooseBonusProductModal .modal-header .close .sr-only').text(response.closeButtonText);
             $('#chooseBonusProductModal .modal-body').html(parsedHtml.body);
             $('#chooseBonusProductModal .modal-footer').html(parsedHtml.footer);
             $('#chooseBonusProductModal').modal('show');
@@ -451,7 +482,7 @@ function handlePostCartAdd(response) {
     } else {
         if ($('.add-to-cart-messages').length === 0) {
             $('body').append(
-            '<div class="add-to-cart-messages"></div>'
+                '<div class="add-to-cart-messages"></div>'
             );
         }
 
@@ -515,8 +546,34 @@ module.exports = {
             chooseBonusProducts(data);
         }
     },
+
+    focusChooseBonusProductModal: function () {
+        $('body').on('shown.bs.modal', '#chooseBonusProductModal', function () {
+            $('#chooseBonusProductModal').siblings().attr('aria-hidden', 'true');
+            $('#chooseBonusProductModal .close').focus();
+        });
+    },
+
+    onClosingChooseBonusProductModal: function () {
+        $('body').on('hidden.bs.modal', '#chooseBonusProductModal', function () {
+            $('#chooseBonusProductModal').siblings().attr('aria-hidden', 'false');
+        });
+    },
+
+    trapChooseBonusProductModalFocus: function () {
+        $('body').on('keydown', '#chooseBonusProductModal', function (e) {
+            var focusParams = {
+                event: e,
+                containerSelector: '#chooseBonusProductModal',
+                firstElementSelector: '.close',
+                lastElementSelector: '.add-bonus-products'
+            };
+            focusHelper.setTabNextFocus(focusParams);
+        });
+    },
+
     colorAttribute: function () {
-        $(document).on('click', '[data-attr="color"] a', function (e) {
+        $(document).on('click', '[data-attr="color"] button', function (e) {
             e.preventDefault();
 
             if ($(this).attr('disabled')) {
@@ -527,7 +584,7 @@ module.exports = {
                 $productContainer = $(this).closest('.product-detail');
             }
 
-            attributeSelect(e.currentTarget.href, $productContainer);
+            attributeSelect($(this).attr('data-url'), $productContainer);
         });
     },
 
@@ -739,7 +796,7 @@ module.exports = {
                     $.spinner().stop();
                     if (data.error) {
                         $('.error-choice-of-bonus-products')
-                        .html(data.errorMessage);
+                            .html(data.errorMessage);
                     } else {
                         $('.configure-bonus-product-attributes').html(data);
                         $('.bonus-products-step2').removeClass('hidden-xl-down');
@@ -747,8 +804,8 @@ module.exports = {
 
                         if ($('.add-to-cart-messages').length === 0) {
                             $('body').append(
-                            '<div class="add-to-cart-messages"></div>'
-                         );
+                                '<div class="add-to-cart-messages"></div>'
+                            );
                         }
                         $('.minicart-quantity').html(data.totalQty);
                         $('.add-to-cart-messages').append(
@@ -771,5 +828,6 @@ module.exports = {
         });
     },
 
-    getPidValue: getPidValue
+    getPidValue: getPidValue,
+    getQuantitySelected: getQuantitySelected
 };
