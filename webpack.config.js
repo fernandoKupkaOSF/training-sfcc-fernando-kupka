@@ -5,7 +5,7 @@ const minimatch = require("minimatch");
 const MiniCssExtractPlugin = require("mini-css-extract-plugin");
 const UglifyJsPlugin = require("uglifyjs-webpack-plugin");
 const OptimizeCSSAssetsPlugin = require("optimize-css-assets-webpack-plugin");
-const CleanWebpackPlugin = require("clean-webpack-plugin");
+const {CleanWebpackPlugin} = require("clean-webpack-plugin");
 
 class MiniCssExtractPluginCleanup {
     apply(compiler) {
@@ -88,10 +88,7 @@ class WebpackBundle {
         };
 
         bundle.plugins = [
-            new CleanWebpackPlugin(["*/css", "*/js"], {
-                root: path.resolve(cartridgesPath, cartridgeName, "cartridge/static"),
-                verbose: false
-            }),
+            new CleanWebpackPlugin(),
             new MiniCssExtractPlugin(),
             new MiniCssExtractPluginCleanup()
         ];
