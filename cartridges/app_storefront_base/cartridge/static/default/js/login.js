@@ -86,6 +86,23 @@
 /************************************************************************/
 /******/ ({
 
+/***/ "./cartridges/app_storefront_base/cartridge/client/default/js/components/errorNotification.js":
+/*!****************************************************************************************************!*\
+  !*** ./cartridges/app_storefront_base/cartridge/client/default/js/components/errorNotification.js ***!
+  \****************************************************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+module.exports = function (element, message) {
+  var errorHtml = '<div class="alert alert-danger alert-dismissible ' + 'fade show" role="alert">' + '<button type="button" class="close" data-dismiss="alert" aria-label="Close">' + '<span aria-hidden="true">&times;</span>' + '</button>' + message + '</div>';
+  $(element).append(errorHtml);
+};
+
+/***/ }),
+
 /***/ "./cartridges/app_storefront_base/cartridge/client/default/js/components/formValidation.js":
 /*!*************************************************************************************************!*\
   !*** ./cartridges/app_storefront_base/cartridge/client/default/js/components/formValidation.js ***!
@@ -132,7 +149,7 @@ module.exports = function (formElement, payload) {
 
   if (payload && payload.error) {
     var form = $(formElement).prop('tagName') === 'FORM' ? $(formElement) : $(formElement).parents('form');
-    form.prepend('<div class="alert alert-danger">' + payload.error.join('<br/>') + '</div>');
+    form.prepend('<div class="alert alert-danger" role="alert">' + payload.error.join('<br/>') + '</div>');
   }
 };
 
@@ -167,6 +184,8 @@ $(document).ready(function () {
 
 
 var formValidation = __webpack_require__(/*! ../components/formValidation */ "./cartridges/app_storefront_base/cartridge/client/default/js/components/formValidation.js");
+
+var createErrorNotification = __webpack_require__(/*! ../components/errorNotification */ "./cartridges/app_storefront_base/cartridge/client/default/js/components/errorNotification.js");
 
 module.exports = {
   login: function login() {
@@ -228,6 +247,8 @@ module.exports = {
         error: function error(err) {
           if (err.responseJSON.redirectUrl) {
             window.location.href = err.responseJSON.redirectUrl;
+          } else {
+            createErrorNotification($('.error-messaging'), err.responseJSON.errorMessage);
           }
 
           form.spinner().stop();

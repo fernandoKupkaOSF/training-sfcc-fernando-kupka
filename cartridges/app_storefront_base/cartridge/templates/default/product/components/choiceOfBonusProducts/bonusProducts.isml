@@ -1,3 +1,4 @@
+<isset name="renderedQuantity" value="${false}" scope="page" />
 <isloop items="${pdict.products}" var="product" status="productLoopStatus">
     <div class="col-12 bonus-product-item ready-to-order choice-of-bonus-product" data-pid="${product.id}" data-ready-to-order="${product.readyToOrder}" data-optionID="">
         <div class="product-quickview product-${product.productType} col product-wrapper product-detail" data-pid="${product.id}">
@@ -11,46 +12,37 @@
                 <div class="col-sm-6">
                     <div class="detail-panel">
                         <!-- Attributes -->
-                        <section class="attributes">
-                            <div class="col-12">
-                                <isloop items="${product.variationAttributes}" var="attr" status="attributeStatus">
-                                    <div data-attr="${attr.id}" class="swatch">
-                                        <isif condition="${attributeStatus.last}">
-                                            <div class="row">
-                                                <isset name="isQuickView" value="${false}" scope="page"/>
-                                                <div class="col-md-10 col-12 product-options">
-                                                    <div class="row">
-                                                        <div class="col-8">
-                                                            <isinclude template="product/components/choiceOfBonusProducts/variationAttributeBonusProducts" />
-                                                        </div>
-                                                        <!-- Quantity Drop Down Menu -->
-                                                       <div class="col-4 quantity">
-                                                           <isinclude template="product/components/choiceOfBonusProducts/bonusProductsQuantity" />
-                                                       </div>
-                                                    </div>
-                                                </div>
-                                                <isset name="isQuickView" value="${true}" scope="page"/>
-                                            </div>
-                                        <iselse>
+                        <section>
+                            <isloop items="${product.variationAttributes}" var="attr" status="attributeStatus">
+                                <div data-attr="${attr.id}" class="swatch row">
+                                    <isif condition="${attributeStatus.last}">
+                                        <isset name="isQuickView" value="${false}" scope="page"/>
+                                        <div class="col-8">
                                             <isinclude template="product/components/choiceOfBonusProducts/variationAttributeBonusProducts" />
-                                        </isif>
-                                    </div>
-                                </isloop>
-                            </div>
+                                        </div>
+                                        <!-- Quantity Drop Down Menu -->
+                                       <div class="col-4 quantity">
+                                           <isinclude template="product/components/choiceOfBonusProducts/bonusProductsQuantity" />
+                                           <isset name="renderedQuantity" value="${true}" scope="page" />
+                                       </div>
+
+                                        <isset name="isQuickView" value="${true}" scope="page"/>
+                                    <iselse>
+                                        <div class="col-8">
+                                            <isinclude template="product/components/choiceOfBonusProducts/variationAttributeBonusProducts" />
+                                        </div>
+                                    </isif>
+                                </div>
+                            </isloop>
                         </section>
+
                         <isif condition="${product.productType !== 'bundle'}">
                             <!-- Options -->
                             <isif condition="${product.options && product.options.length > 0}">
                                 <isset name="isQuickView" value="${false}" scope="page"/>
-                                <div class="col-md-10 col-12 product-options">
                                     <isloop items="${product.options}" var="option" status="loopStatus">
                                         <div class="row product-option" data-option-id="${option.id}">
-                                            <div class="bonus-option
-                                                <isif condition="${loopStatus.last && !isQuickView || isProductSet}">
-                                                    col-8
-                                                <iselse>
-                                                    col-12
-                                                </isif>">
+                                            <div class="bonus-option ${loopStatus.last && !isQuickView || isProductSet ? 'col-8' : 'col-12' }">
                                                 <isinclude template="product/components/option" />
                                             </div>
 
@@ -58,23 +50,35 @@
                                             <isif condition="${loopStatus.last && (!isQuickView || isProductSet)}">
                                                 <div class="col-4 quantity">
                                                     <isinclude template="product/components/choiceOfBonusProducts/bonusProductsQuantity" />
+                                                    <isset name="renderedQuantity" value="${true}" scope="page" />
                                                 </div>
                                             </isif>
                                         </div>
                                     </isloop>
-                                </div>
                                 <isset name="isQuickView" value="${true}" scope="page"/>
                             </isif>
                         </isif>
-                        <div class="col-sm-12 bonus-product-price">
-                            ${product.bonusUnitPrice}
+
+                        <isif condition="${!renderedQuantity}">
+                            <div class="col-12 quantity">
+                                <isinclude template="product/components/choiceOfBonusProducts/bonusProductsQuantity" />
+                            </div>
+                        </isif>
+
+                        <div class="row">
+                            <div class="col-12 bonus-product-price">
+                                ${product.bonusUnitPrice}
+                            </div>
                         </div>
-                        <div class="col-sm-12">
-                            <button class="btn btn-secondary btn-block btn-outline-primary select-bonus-product"
-                                data-pid="${product.id}"
-                                ${!product.readyToOrder || !product.available ? "disabled" : ""}>
-                                    ${Resource.msg('button.choiceofbonus.select', 'product', null)}
-                            </button>
+
+                        <div class="row">
+                            <div class="col-sm-12">
+                                <button class="btn btn-block btn-outline-primary select-bonus-product"
+                                        data-pid="${product.id}"
+                                        ${!product.readyToOrder || !product.available ? "disabled" : ""}>
+                                ${Resource.msg('button.choiceofbonus.select', 'product', null)}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -100,10 +104,10 @@
                     <span class="pre-cart-products">${pdict.selectedBonusProducts.length}</span> ${Resource.msgf('label.choiceofbonus.selectproducts', 'product', null, pdict.maxPids)}
                 </div>
                 <isloop items="${pdict.selectedBonusProducts}" var="selectedProduct" status="productLoopStatus">
-                    <div class="selected-pid row" 
-                        data-pid="${selectedProduct.pid}" 
+                    <div class="selected-pid row"
+                        data-pid="${selectedProduct.pid}"
                         data-qty='<isprint value="${selectedProduct.submittedQty}" encoding="htmlsinglequote" formatter="#"/>'
-                        data-optionid="${selectedProduct.option.optionid}" 
+                        data-optionid="${selectedProduct.option.optionid}"
                         data-option-selected-value="${selectedProduct.option.selectedvalue}" >
                         <div class="col-11 bonus-product-name">${selectedProduct.name}</div>
                         <div class="col-1"><i class="fa fa-times" aria-hidden="true"></i></div>

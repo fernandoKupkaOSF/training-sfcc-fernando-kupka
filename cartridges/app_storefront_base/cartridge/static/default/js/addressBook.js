@@ -118,6 +118,16 @@ var formValidation = __webpack_require__(/*! ../components/formValidation */ "./
 
 var url;
 var isDefault;
+/**
+ * Create an alert to display the error message
+ * @param {Object} message - Error message to display
+ */
+
+function createErrorNotification(message) {
+  var errorHtml = '<div class="alert alert-danger alert-dismissible valid-cart-error ' + 'fade show" role="alert">' + '<button type="button" class="close" data-dismiss="alert" aria-label="Close">' + '<span aria-hidden="true">&times;</span>' + '</button>' + message + '</div>';
+  $('.error-messaging').append(errorHtml);
+}
+
 module.exports = {
   removeAddress: function removeAddress() {
     $('.remove-address').on('click', function (e) {
@@ -131,37 +141,40 @@ module.exports = {
       }
 
       $('.product-to-remove').empty().append($(this).data('id'));
-      $('.delete-confirmation-btn').click(function (f) {
-        f.preventDefault();
-        $(e.target).trigger('address:remove', f);
-        $.ajax({
-          url: url,
-          type: 'get',
-          dataType: 'json',
-          success: function success(data) {
-            $('#uuid-' + data.UUID).remove();
+    });
+  },
+  removeAddressConfirmation: function removeAddressConfirmation() {
+    $('.delete-confirmation-btn').click(function (e) {
+      e.preventDefault();
+      $.ajax({
+        url: url,
+        type: 'get',
+        dataType: 'json',
+        success: function success(data) {
+          $('#uuid-' + data.UUID).remove();
 
-            if (isDefault) {
-              var addressId = $('.card .address-heading').first().text();
-              var addressHeading = addressId + ' (' + data.defaultMsg + ')';
-              $('.card .address-heading').first().text(addressHeading);
-              $('.card .card-make-default-link').first().remove();
-              $('.remove-address').data('default', true);
+          if (isDefault) {
+            var addressId = $('.card .address-heading').first().text();
+            var addressHeading = addressId + ' (' + data.defaultMsg + ')';
+            $('.card .address-heading').first().text(addressHeading);
+            $('.card .card-make-default-link').first().remove();
+            $('.remove-address').data('default', true);
 
-              if (data.message) {
-                var toInsert = '<div><h3>' + data.message + '</h3><div>';
-                $('.addressList').after(toInsert);
-              }
+            if (data.message) {
+              var toInsert = '<div><h3>' + data.message + '</h3><div>';
+              $('.addressList').after(toInsert);
             }
-          },
-          error: function error(err) {
-            if (err.responseJSON.redirectUrl) {
-              window.location.href = err.responseJSON.redirectUrl;
-            }
-
-            $.spinner().stop();
           }
-        });
+        },
+        error: function error(err) {
+          if (err.responseJSON.redirectUrl) {
+            window.location.href = err.responseJSON.redirectUrl;
+          } else {
+            createErrorNotification(err.responseJSON.errorMessage);
+          }
+
+          $.spinner().stop();
+        }
       });
     });
   },
@@ -247,7 +260,7 @@ module.exports = function (formElement, payload) {
 
   if (payload && payload.error) {
     var form = $(formElement).prop('tagName') === 'FORM' ? $(formElement) : $(formElement).parents('form');
-    form.prepend('<div class="alert alert-danger">' + payload.error.join('<br/>') + '</div>');
+    form.prepend('<div class="alert alert-danger" role="alert">' + payload.error.join('<br/>') + '</div>');
   }
 };
 

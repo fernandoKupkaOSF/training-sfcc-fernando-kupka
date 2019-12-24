@@ -2,7 +2,7 @@
     <isscript>
         var assets = require('*/cartridge/scripts/assets.js');
         assets.addCss('/css/checkout/checkoutLogin.css');
-        assets.addJs('/js/checkoutLogin.js');
+        assets.addJs('/js/login.js');
     </isscript>
 
     <isif condition="${pdict.reportingURLs && pdict.reportingURLs.length}">
@@ -23,7 +23,7 @@
             <div class="col-md-6 col-sm-8">
                 <div class="card">
                     <div class="card-header">
-                        <h4>${Resource.msg('heading.guest.checkout', 'checkout', null)}</h4>
+                        <h2 class="card-header-custom">${Resource.msg('heading.guest.checkout', 'checkout', null)}</h2>
                     </div>
                     <div class="card-body">
                         <p>
@@ -39,16 +39,17 @@
                 </div>
                 <div class="card">
                     <div class="card-header">
-                        <h4>${Resource.msg('heading.returning.customers', 'checkout', null)}</h4>
+                        <h2 class="card-header-custom">${Resource.msg('heading.returning.customers', 'checkout', null)}</h2>
                     </div>
                     <div class="card-body">
                         <isinclude template="account/components/loginForm" />
+                        <isinclude template="account/password/requestPasswordResetModal"/>
                         <isinclude template="account/components/oauth" />
                     </div>
                 </div>
                 <div class="card">
                     <div class="card-header">
-                        <h4>${Resource.msg('heading.create.account', 'checkout', null)}</h4>
+                        <h2 class="card-header-custom">${Resource.msg('heading.create.account', 'checkout', null)}</h2>
                     </div>
                     <div class="card-body">
                         <a href="${URLUtils.https('Login-Show', 'action', 'register')}" class="btn btn-block btn-outline-primary">

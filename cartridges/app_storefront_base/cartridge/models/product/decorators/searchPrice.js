@@ -41,10 +41,10 @@ function getListPrices(hit, getSearchHit) {
     }
     var rootPriceBook = pricingHelper.getRootPriceBook(priceModel.priceInfo.priceBook);
     if (rootPriceBook.ID === priceModel.priceInfo.priceBook.ID) {
-        return {};
+        return { minPrice: hit.minPrice, maxPrice: hit.maxPrice };
     }
     var searchHit;
-
+    var currentApplicablePriceBooks = PriceBookMgr.getApplicablePriceBooks();
     try {
         PriceBookMgr.setApplicablePriceBooks(rootPriceBook);
         searchHit = getSearchHit(hit.product);
@@ -55,11 +55,25 @@ function getListPrices(hit, getSearchHit) {
         // When switching locales, there is nothing that clears the price book ids stored in the
         // session, so subsequent searches will continue to use the ids from the originally set
         // price books which have the wrong currency.
-        PriceBookMgr.setApplicablePriceBooks();
+        if (currentApplicablePriceBooks && currentApplicablePriceBooks.length) {
+            PriceBookMgr.setApplicablePriceBooks(currentApplicablePriceBooks.toArray());
+        } else {
+            PriceBookMgr.setApplicablePriceBooks();
+        }
     }
 
     if (searchHit) {
-        return { minPrice: searchHit.minPrice, maxPrice: searchHit.maxPrice };
+        if (searchHit.minPrice.available && searchHit.maxPrice.available) {
+            return {
+                minPrice: searchHit.minPrice,
+                maxPrice: searchHit.maxPrice
+            };
+        }
+
+        return {
+            minPrice: hit.minPrice,
+            maxPrice: hit.maxPrice
+        };
     }
 
     return {};
@@ -73,7 +87,9 @@ module.exports = function (object, searchHit, activePromotions, getSearchHit) {
             var promotions = getPromotions(searchHit, activePromotions);
             if (promotions.getLength() > 0) {
                 var promotionalPrice = pricingHelper.getPromotionPrice(searchHit.firstRepresentedProduct, promotions);
-                salePrice = { minPrice: promotionalPrice, maxPrice: promotionalPrice };
+                if (promotionalPrice && promotionalPrice.available) {
+                    salePrice = { minPrice: promotionalPrice, maxPrice: promotionalPrice };
+                }
             }
             var listPrice = getListPrices(searchHit, getSearchHit);
 
@@ -81,6 +97,7 @@ module.exports = function (object, searchHit, activePromotions, getSearchHit) {
                 // range price
                 return new RangePrice(salePrice.minPrice, salePrice.maxPrice);
             }
+
             if (listPrice.minPrice && listPrice.minPrice.valueOrNull !== null) {
                 if (listPrice.minPrice.value !== salePrice.minPrice.value) {
                     return new DefaultPrice(salePrice.minPrice, listPrice.minPrice);

@@ -68,6 +68,7 @@ server.post(
         var Transaction = require('dw/system/Transaction');
         var AccountModel = require('*/cartridge/models/account');
         var OrderModel = require('*/cartridge/models/order');
+        var URLUtils = require('dw/web/URLUtils');
         var UUIDUtils = require('dw/util/UUIDUtils');
         var ShippingHelper = require('*/cartridge/scripts/checkout/shippingHelpers');
         var Locale = require('dw/util/Locale');
@@ -78,7 +79,17 @@ server.post(
 
         var form = server.forms.getForm('shipping');
         var shippingFormErrors = COHelpers.validateShippingForm(form.shippingAddress.addressFields);
+
         var basket = BasketMgr.getCurrentBasket();
+        if (!basket) {
+            res.json({
+                redirectUrl: URLUtils.url('Cart-Show').toString(),
+                error: true
+            });
+
+            return next();
+        }
+
         var result = {};
 
         var usingMultiShipping = req.session.privacyCache.get('usingMultiShipping');
@@ -91,7 +102,7 @@ server.post(
             }
             res.json({
                 form: form,
-                fieldErrors: shippingFormErrors,
+                fieldErrors: [shippingFormErrors],
                 serverErrors: [],
                 error: true
             });
@@ -108,7 +119,7 @@ server.post(
             };
 
             if (Object.prototype.hasOwnProperty
-                    .call(form.shippingAddress.addressFields, 'states')) {
+                .call(form.shippingAddress.addressFields, 'states')) {
                 result.address.stateCode =
                     form.shippingAddress.addressFields.states.stateCode.value;
             }
@@ -118,7 +129,7 @@ server.post(
 
             result.shippingMethod =
                 form.shippingAddress.shippingMethodID.value ?
-                '' + form.shippingAddress.shippingMethodID.value : null;
+                    '' + form.shippingAddress.shippingMethodID.value : null;
             result.form = form;
 
             result.isGift = form.shippingAddress.isGift.checked;
@@ -194,7 +205,7 @@ server.post(
                 }
             }
 
-            if (shipment) {
+            if (shipment && viewData && !!viewData.isGift) {
                 var giftResult = COHelpers.setGift(shipment, viewData.isGift, viewData.giftMessage);
 
                 if (giftResult.error) {

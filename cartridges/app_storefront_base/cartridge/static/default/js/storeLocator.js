@@ -225,7 +225,9 @@ function updateStoresResults(data) {
 
 
 function _search(element) {
-  $.spinner().start();
+  var dialog = element.closest('.in-store-inventory-dialog');
+  var spinner = dialog.length ? dialog.spinner() : $.spinner();
+  spinner.start();
   var $form = element.closest('.store-locator');
   var radius = $('.results').data('radius');
   var url = $form.attr('action');
@@ -242,7 +244,7 @@ function _search(element) {
     data: payload,
     dataType: 'json',
     success: function success(data) {
-      $.spinner().stop();
+      spinner.stop();
       updateStoresResults(data);
       $('.select-store').prop('disabled', true);
     }
@@ -279,7 +281,7 @@ module.exports = {
         var urlParams = {
           radius: radius,
           lat: position.coords.latitude,
-          long: position.coords.longitude
+          "long": position.coords.longitude
         };
         url = appendToUrl(url, urlParams);
         $.ajax({
@@ -311,7 +313,7 @@ module.exports = {
     $('.store-locator-container .radius').change(function () {
       var radius = $(this).val();
       var searchKeys = $('.results').data('search-key');
-      var url = $('.radius').data('action-url');
+      var url = $(this).data('action-url');
       var urlParams = {};
 
       if (searchKeys.postalCode) {
@@ -319,22 +321,24 @@ module.exports = {
           radius: radius,
           postalCode: searchKeys.postalCode
         };
-      } else if (searchKeys.lat && searchKeys.long) {
+      } else if (searchKeys.lat && searchKeys["long"]) {
         urlParams = {
           radius: radius,
           lat: searchKeys.lat,
-          long: searchKeys.long
+          "long": searchKeys["long"]
         };
       }
 
       url = appendToUrl(url, urlParams);
-      $.spinner().start();
+      var dialog = $(this).closest('.in-store-inventory-dialog');
+      var spinner = dialog.length ? dialog.spinner() : $.spinner();
+      spinner.start();
       $.ajax({
         url: url,
         type: 'get',
         dataType: 'json',
         success: function success(data) {
-          $.spinner().stop();
+          spinner.stop();
           updateStoresResults(data);
           $('.select-store').prop('disabled', true);
         }

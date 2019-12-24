@@ -4,7 +4,7 @@
     </span>
 <iselse>
     <p>
-        <span>
+        <span class="search-result-count">
             <isif condition="${pdict.productSearch.productIds.length > 0}">
                 ${Resource.msgf('label.resultsfor', 'search', null, pdict.productSearch.count)}
             <iselse>
@@ -15,7 +15,7 @@
             ${pdict.productSearch.searchKeywords ? pdict.productSearch.searchKeywords : ''}
         </span>
     </p>
-    <isif condition="${pdict.productSearch.isSearchSuggestionsAvailable}">
+    <isif condition="${pdict.productSearch.isSearchSuggestionsAvailable && pdict.productSearch.productIds.length === 0}">
         <isloop items="${pdict.productSearch.suggestionPhrases}" alias="phrase" status="loopState" >
             <isif condition="${loopState.first}">
                 <p>

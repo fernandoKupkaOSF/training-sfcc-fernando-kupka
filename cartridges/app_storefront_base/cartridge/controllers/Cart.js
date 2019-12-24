@@ -99,7 +99,7 @@ server.post('AddProduct', function (req, res, next) {
             previousBonusDiscountLineItems,
             urlObject,
             result.uuid
-    );
+        );
     if (newBonusDiscountLineItem) {
         var allLineItems = currentBasket.allProductLineItems;
         var collections = require('*/cartridge/scripts/util/collections');
@@ -113,13 +113,17 @@ server.post('AddProduct', function (req, res, next) {
         });
     }
 
+    var reportingURL = cartHelper.getReportingUrlAddToCart(currentBasket, result.error);
+
     res.json({
+        reportingURL: reportingURL,
         quantityTotal: quantityTotal,
         message: result.message,
         cart: cartModel,
         newBonusDiscountLineItem: newBonusDiscountLineItem || {},
         error: result.error,
-        pliUUID: result.uuid
+        pliUUID: result.uuid,
+        minicartCountOfItems: Resource.msgf('minicart.count', 'common', null, quantityTotal)
     });
 
     next();
@@ -291,6 +295,7 @@ server.get('UpdateQuantity', function (req, res, next) {
     var totalQtyRequested = 0;
     var qtyAlreadyInCart = 0;
     var minOrderQuantity = 0;
+    var perpetual = false;
     var canBeUpdated = false;
     var bundleItems;
     var bonusDiscountLineItemCount = currentBasket.bonusDiscountLineItems.length;
@@ -308,12 +313,14 @@ server.get('UpdateQuantity', function (req, res, next) {
                 );
                 totalQtyRequested = quantityToUpdate + qtyAlreadyInCart;
                 availableToSell = item.product.availabilityModel.inventoryRecord.ATS.value;
+                perpetual = item.product.availabilityModel.inventoryRecord.perpetual;
                 minOrderQuantity = item.product.minOrderQuantity.value;
-                return (totalQtyRequested <= availableToSell) &&
+                return (totalQtyRequested <= availableToSell || perpetual) &&
                     (quantityToUpdate >= minOrderQuantity);
             });
         } else {
             availableToSell = matchingLineItem.product.availabilityModel.inventoryRecord.ATS.value;
+            perpetual = matchingLineItem.product.availabilityModel.inventoryRecord.perpetual;
             qtyAlreadyInCart = cartHelper.getQtyAlreadyInCart(
                 productId,
                 productLineItems,
@@ -321,7 +328,7 @@ server.get('UpdateQuantity', function (req, res, next) {
             );
             totalQtyRequested = updateQuantity + qtyAlreadyInCart;
             minOrderQuantity = matchingLineItem.product.minOrderQuantity.value;
-            canBeUpdated = (totalQtyRequested <= availableToSell) &&
+            canBeUpdated = (totalQtyRequested <= availableToSell || perpetual) &&
                 (updateQuantity >= minOrderQuantity);
         }
     }
@@ -590,7 +597,17 @@ server.post('AddBonusProducts', function (req, res, next) {
     for (var i = 0; i < data.bonusProducts.length; i++) {
         totalQty += data.bonusProducts[i].qty;
     }
-    if (totalQty > qtyAllowed) {
+
+    if (totalQty === 0) {
+        res.json({
+            errorMessage: Resource.msg(
+                'error.alert.choiceofbonus.no.product.selected',
+                'product',
+                null),
+            error: true,
+            success: false
+        });
+    } else if (totalQty > qtyAllowed) {
         res.json({
             errorMessage: Resource.msgf(
                 'error.alert.choiceofbonus.max.quantity',
@@ -619,13 +636,15 @@ server.post('AddBonusProducts', function (req, res, next) {
                     var product = ProductMgr.getProduct(bonusProduct.pid);
                     var selectedOptions = bonusProduct.options;
                     var optionModel = productHelper.getCurrentOptionModel(
-                            product.optionModel,
-                            selectedOptions);
+                        product.optionModel,
+                        selectedOptions
+                    );
                     pli = currentBasket.createBonusProductLineItem(
-                            bonusDiscountLineItem,
-                            product,
-                            optionModel,
-                            null);
+                        bonusDiscountLineItem,
+                        product,
+                        optionModel,
+                        null
+                    );
                     pli.setQuantityValue(bonusProduct.qty);
                     pli.custom.bonusProductLineItemUUID = pliUUID;
                 });
@@ -697,9 +716,9 @@ server.get('GetProduct', function (req, res, next) {
     var URLUtils = require('dw/web/URLUtils');
     var collections = require('*/cartridge/scripts/util/collections');
     var ProductFactory = require('*/cartridge/scripts/factories/product');
+    var renderTemplateHelper = require('*/cartridge/scripts/renderTemplateHelper');
 
     var requestUuid = req.querystring.uuid;
-
 
     var requestPLI = collections.find(BasketMgr.getCurrentBasket().allProductLineItems, function (item) {
         return item.UUID === requestUuid;
@@ -707,17 +726,41 @@ server.get('GetProduct', function (req, res, next) {
 
     var requestQuantity = requestPLI.quantityValue.toString();
 
+    // If the product has options
+    var optionProductLineItems = requestPLI.getOptionProductLineItems();
+    var selectedOptions = null;
+    var selectedOptionValueId = null;
+    if (optionProductLineItems && optionProductLineItems.length) {
+        var optionProductLineItem = optionProductLineItems.iterator().next();
+        selectedOptionValueId = optionProductLineItem.optionValueID;
+        selectedOptions = [{ optionId: optionProductLineItem.optionID, selectedValueId: optionProductLineItem.optionValueID, productId: requestPLI.productID }];
+    }
+
     var pliProduct = {
         pid: requestPLI.productID,
-        quantity: requestQuantity
+        quantity: requestQuantity,
+        options: selectedOptions
     };
 
-    res.render('product/quickView.isml', {
+    var context = {
         product: ProductFactory.get(pliProduct),
         selectedQuantity: requestQuantity,
+        selectedOptionValueId: selectedOptionValueId,
         uuid: requestUuid,
-        resources: Resource.msg('info.selectforstock', 'product', 'Select Styles for Availability'),
-        updateCartUrl: URLUtils.url('Cart-EditProductLineItem')
+        updateCartUrl: URLUtils.url('Cart-EditProductLineItem'),
+        closeButtonText: Resource.msg('link.editProduct.close', 'cart', null),
+        enterDialogMessage: Resource.msg('msg.enter.edit.product', 'cart', null),
+        template: 'product/quickView.isml'
+    };
+
+    res.setViewData(context);
+
+    this.on('route:BeforeComplete', function (req, res) { // eslint-disable-line no-shadow
+        var viewData = res.getViewData();
+
+        res.json({
+            renderedTemplate: renderTemplateHelper.getRenderedHtml(viewData, viewData.template)
+        });
     });
 
     next();
@@ -734,10 +777,6 @@ server.post('EditProductLineItem', function (req, res, next) {
     var cartHelper = require('*/cartridge/scripts/cart/cartHelpers');
     var basketCalculationHelpers = require('*/cartridge/scripts/helpers/basketCalculationHelpers');
 
-    var uuid = req.form.uuid;
-    var productId = req.form.pid;
-    var updateQuantity = parseInt(req.form.quantity, 10);
-
     var currentBasket = BasketMgr.getCurrentBasket();
 
     if (!currentBasket) {
@@ -746,9 +785,13 @@ server.post('EditProductLineItem', function (req, res, next) {
             error: true,
             redirectUrl: URLUtils.url('Cart-Show').toString()
         });
-
         return next();
     }
+
+    var uuid = req.form.uuid;
+    var productId = req.form.pid;
+    var selectedOptionValueId = req.form.selectedOptionValueId;
+    var updateQuantity = parseInt(req.form.quantity, 10);
 
     var productLineItems = currentBasket.allProductLineItems;
     var requestLineItem = collections.find(productLineItems, function (item) {
@@ -772,6 +815,7 @@ server.post('EditProductLineItem', function (req, res, next) {
     var qtyAlreadyInCart = 0;
     var minOrderQuantity = 0;
     var canBeUpdated = false;
+    var perpetual = false;
     var bundleItems;
 
     if (requestLineItem) {
@@ -787,12 +831,14 @@ server.post('EditProductLineItem', function (req, res, next) {
                 );
                 totalQtyRequested = quantityToUpdate + qtyAlreadyInCart;
                 availableToSell = item.product.availabilityModel.inventoryRecord.ATS.value;
+                perpetual = item.product.availabilityModel.inventoryRecord.perpetual;
                 minOrderQuantity = item.product.minOrderQuantity.value;
-                return (totalQtyRequested <= availableToSell) &&
+                return (totalQtyRequested <= availableToSell || perpetual) &&
                     (quantityToUpdate >= minOrderQuantity);
             });
         } else {
             availableToSell = requestLineItem.product.availabilityModel.inventoryRecord.ATS.value;
+            perpetual = requestLineItem.product.availabilityModel.inventoryRecord.perpetual;
             qtyAlreadyInCart = cartHelper.getQtyAlreadyInCart(
                 productId,
                 productLineItems,
@@ -800,7 +846,7 @@ server.post('EditProductLineItem', function (req, res, next) {
             );
             totalQtyRequested = updateQuantity + qtyAlreadyInCart;
             minOrderQuantity = requestLineItem.product.minOrderQuantity.value;
-            canBeUpdated = (totalQtyRequested <= availableToSell) &&
+            canBeUpdated = (totalQtyRequested <= availableToSell || perpetual) &&
                 (updateQuantity >= minOrderQuantity);
         }
     }
@@ -808,7 +854,6 @@ server.post('EditProductLineItem', function (req, res, next) {
     var error = false;
     if (canBeUpdated) {
         var product = ProductMgr.getProduct(productId);
-
         try {
             Transaction.wrap(function () {
                 if (newPidAlreadyExist) {
@@ -823,8 +868,17 @@ server.post('EditProductLineItem', function (req, res, next) {
                     requestLineItem.replaceProduct(product);
                 }
 
-                requestLineItem.setQuantityValue(updateQuantity);
+                // If the product has options
+                var optionModel = product.getOptionModel();
+                if (optionModel && optionModel.options && optionModel.options.length) {
+                    var productOption = optionModel.options.iterator().next();
+                    var productOptionValue = optionModel.getOptionValue(productOption, selectedOptionValueId);
+                    var optionProductLineItems = requestLineItem.getOptionProductLineItems();
+                    var optionProductLineItem = optionProductLineItems.iterator().next();
+                    optionProductLineItem.updateOptionValue(productOptionValue);
+                }
 
+                requestLineItem.setQuantityValue(updateQuantity);
                 basketCalculationHelpers.calculateTotals(currentBasket);
             });
         } catch (e) {

@@ -7,43 +7,6 @@ var consentTracking = require('*/cartridge/scripts/middleware/consentTracking');
 var pageMetaData = require('*/cartridge/scripts/middleware/pageMetaData');
 
 /**
- * Creates the breadcrumbs object
- * @param {string} cgid - category ID from navigation and search
- * @param {string} pid - product ID
- * @param {Array} breadcrumbs - array of breadcrumbs object
- * @returns {Array} an array of breadcrumb objects
- */
-function getAllBreadcrumbs(cgid, pid, breadcrumbs) {
-    var URLUtils = require('dw/web/URLUtils');
-    var CatalogMgr = require('dw/catalog/CatalogMgr');
-    var ProductMgr = require('dw/catalog/ProductMgr');
-
-    var category;
-    var product;
-    if (pid) {
-        product = ProductMgr.getProduct(pid);
-        category = product.variant
-            ? product.masterProduct.primaryCategory
-            : product.primaryCategory;
-    } else if (cgid) {
-        category = CatalogMgr.getCategory(cgid);
-    }
-
-    if (category) {
-        breadcrumbs.push({
-            htmlValue: category.displayName,
-            url: URLUtils.url('Search-Show', 'cgid', category.ID)
-        });
-
-        if (category.parent && category.parent.ID !== 'root') {
-            return getAllBreadcrumbs(category.parent.ID, null, breadcrumbs);
-        }
-    }
-
-    return breadcrumbs;
-}
-
-/**
  * @typedef ProductDetailPageResourceMap
  * @type Object
  * @property {String} global_availability - Localized string for "Availability"
@@ -53,65 +16,45 @@ function getAllBreadcrumbs(cgid, pid, breadcrumbs) {
  * @property {String} info_selectforstock - Localized string for "Select Styles for Availability"
  */
 
-/**
- * Generates a map of string resources for the template
- *
- * @returns {ProductDetailPageResourceMap} - String resource map
- */
-function getResources() {
-    var Resource = require('dw/web/Resource');
-
-    return {
-        info_selectforstock: Resource.msg('info.selectforstock', 'product',
-            'Select Styles for Availability')
-    };
-}
-
-/**
- * Renders the Product Details Page
- * @param {Object} querystring - query string parameters
- * @param {Object} reqPageMetaData - request pageMetaData object
- * @param {Object} res - response object
- */
-function showProductPage(querystring, reqPageMetaData, res) {
-    var URLUtils = require('dw/web/URLUtils');
-    var ProductFactory = require('*/cartridge/scripts/factories/product');
-    var pageMetaHelper = require('*/cartridge/scripts/helpers/pageMetaHelper');
-
-    var params = querystring;
-    var product = ProductFactory.get(params);
-    var addToCartUrl = URLUtils.url('Cart-AddProduct');
-    var breadcrumbs = getAllBreadcrumbs(null, product.id, []).reverse();
-    var template = 'product/productDetails';
-
-    if (product.productType === 'bundle') {
-        template = 'product/bundleDetails';
-    } else if (product.productType === 'set') {
-        template = 'product/setDetails';
-    }
-
-    pageMetaHelper.setPageMetaData(reqPageMetaData, product);
-    pageMetaHelper.setPageMetaTags(reqPageMetaData, product);
-
-    res.render(template, {
-        product: product,
-        addToCartUrl: addToCartUrl,
-        resources: getResources(),
-        breadcrumbs: breadcrumbs
-    });
-}
-
 server.get('Show', cache.applyPromotionSensitiveCache, consentTracking.consent, function (req, res, next) {
-    showProductPage(req.querystring, req.pageMetaData, res);
+    var productHelper = require('*/cartridge/scripts/helpers/productHelpers');
+    var showProductPageHelperResult = productHelper.showProductPage(req.querystring, req.pageMetaData);
+    var productType = showProductPageHelperResult.product.productType;
+    if (!showProductPageHelperResult.product.online && productType !== 'set' && productType !== 'bundle') {
+        res.setStatusCode(404);
+        res.render('error/notFound');
+    } else {
+        res.render(showProductPageHelperResult.template, {
+            product: showProductPageHelperResult.product,
+            addToCartUrl: showProductPageHelperResult.addToCartUrl,
+            resources: showProductPageHelperResult.resources,
+            breadcrumbs: showProductPageHelperResult.breadcrumbs,
+            canonicalUrl: showProductPageHelperResult.canonicalUrl,
+            schemaData: showProductPageHelperResult.schemaData
+        });
+    }
     next();
 }, pageMetaData.computedPageMetaData);
 
 server.get('ShowInCategory', cache.applyPromotionSensitiveCache, function (req, res, next) {
-    showProductPage(req.querystring, req.pageMetaData, res);
+    var productHelper = require('*/cartridge/scripts/helpers/productHelpers');
+    var showProductPageHelperResult = productHelper.showProductPage(req.querystring, req.pageMetaData);
+    if (!showProductPageHelperResult.product.online) {
+        res.setStatusCode(404);
+        res.render('error/notFound');
+    } else {
+        res.render(showProductPageHelperResult.template, {
+            product: showProductPageHelperResult.product,
+            addToCartUrl: showProductPageHelperResult.addToCartUrl,
+            resources: showProductPageHelperResult.resources,
+            breadcrumbs: showProductPageHelperResult.breadcrumbs
+        });
+    }
     next();
 });
 
 server.get('Variation', function (req, res, next) {
+    var productHelper = require('*/cartridge/scripts/helpers/productHelpers');
     var priceHelper = require('*/cartridge/scripts/helpers/pricing');
     var ProductFactory = require('*/cartridge/scripts/factories/product');
     var renderTemplateHelper = require('*/cartridge/scripts/renderTemplateHelper');
@@ -119,7 +62,11 @@ server.get('Variation', function (req, res, next) {
     var params = req.querystring;
     var product = ProductFactory.get(params);
 
-    product.price.html = priceHelper.renderHtml(priceHelper.getHtmlContext(product.price));
+    var context = {
+        price: product.price
+    };
+
+    product.price.html = priceHelper.renderHtml(priceHelper.getHtmlContext(context));
 
     var attributeContext = { product: { attributes: product.attributes } };
     var attributeTemplate = 'product/components/attributesPre';
@@ -128,9 +75,25 @@ server.get('Variation', function (req, res, next) {
         attributeTemplate
     );
 
+    var promotionsContext = { product: { promotions: product.promotions } };
+    var promotionsTemplate = 'product/components/promotions';
+
+    product.promotionsHtml = renderTemplateHelper.getRenderedHtml(
+        promotionsContext,
+        promotionsTemplate
+    );
+
+    var optionsContext = { product: { options: product.options } };
+    var optionsTemplate = 'product/components/options';
+
+    product.optionsHtml = renderTemplateHelper.getRenderedHtml(
+        optionsContext,
+        optionsTemplate
+    );
+
     res.json({
         product: product,
-        resources: getResources()
+        resources: productHelper.getResources()
     });
 
     next();
@@ -138,7 +101,10 @@ server.get('Variation', function (req, res, next) {
 
 server.get('ShowQuickView', cache.applyPromotionSensitiveCache, function (req, res, next) {
     var URLUtils = require('dw/web/URLUtils');
+    var productHelper = require('*/cartridge/scripts/helpers/productHelpers');
     var ProductFactory = require('*/cartridge/scripts/factories/product');
+    var renderTemplateHelper = require('*/cartridge/scripts/renderTemplateHelper');
+    var Resource = require('dw/web/Resource');
 
     var params = req.querystring;
     var product = ProductFactory.get(params);
@@ -147,10 +113,26 @@ server.get('ShowQuickView', cache.applyPromotionSensitiveCache, function (req, r
         ? 'product/setQuickView.isml'
         : 'product/quickView.isml';
 
-    res.render(template, {
+    var context = {
         product: product,
         addToCartUrl: addToCartUrl,
-        resources: getResources()
+        resources: productHelper.getResources(),
+        quickViewFullDetailMsg: Resource.msg('link.quickview.viewdetails', 'product', null),
+        closeButtonText: Resource.msg('link.quickview.close', 'product', null),
+        enterDialogMessage: Resource.msg('msg.enter.quickview', 'product', null),
+        template: template
+    };
+
+    res.setViewData(context);
+
+    this.on('route:BeforeComplete', function (req, res) { // eslint-disable-line no-shadow
+        var viewData = res.getViewData();
+        var renderedTemplate = renderTemplateHelper.getRenderedHtml(viewData, viewData.template);
+
+        res.json({
+            renderedTemplate: renderedTemplate,
+            productUrl: URLUtils.url('Product-Show', 'pid', viewData.product.id).relative().toString()
+        });
     });
 
     next();
@@ -173,7 +155,9 @@ server.get('SizeChart', function (req, res, next) {
 });
 
 server.get('ShowBonusProducts', function (req, res, next) {
+    var Resource = require('dw/web/Resource');
     var ProductFactory = require('*/cartridge/scripts/factories/product');
+    var renderTemplateHelper = require('*/cartridge/scripts/renderTemplateHelper');
     var moreUrl = null;
     var pagingModel;
     var products = [];
@@ -254,14 +238,25 @@ server.get('ShowBonusProducts', function (req, res, next) {
         }
     }
 
-    var template = 'product/components/choiceOfBonusProducts/bonusProducts.isml';
-
-    res.render(template, {
+    var context = {
         products: products,
         selectedBonusProducts: selectedBonusProducts,
         maxPids: req.querystring.maxpids,
         moreUrl: moreUrl,
-        showMoreButton: showMoreButton
+        showMoreButton: showMoreButton,
+        closeButtonText: Resource.msg('link.choice.of.bonus.dialog.close', 'product', null),
+        enterDialogMessage: Resource.msg('msg.enter.choice.of.bonus.select.products', 'product', null),
+        template: 'product/components/choiceOfBonusProducts/bonusProducts.isml'
+    };
+
+    res.setViewData(context);
+
+    this.on('route:BeforeComplete', function (req, res) { // eslint-disable-line no-shadow
+        var viewData = res.getViewData();
+
+        res.json({
+            renderedTemplate: renderTemplateHelper.getRenderedHtml(viewData, viewData.template)
+        });
     });
 
     next();

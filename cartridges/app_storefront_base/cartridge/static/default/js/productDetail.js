@@ -86,6 +86,58 @@
 /************************************************************************/
 /******/ ({
 
+/***/ "./cartridges/app_storefront_base/cartridge/client/default/js/components/focus.js":
+/*!****************************************************************************************!*\
+  !*** ./cartridges/app_storefront_base/cartridge/client/default/js/components/focus.js ***!
+  \****************************************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+module.exports = {
+  setTabNextFocus: function setTabNextFocus(focusParams) {
+    var KEYCODE_TAB = 9;
+    var isTabPressed = focusParams.event.key === 'Tab' || focusParams.event.keyCode === KEYCODE_TAB;
+
+    if (!isTabPressed) {
+      return;
+    }
+
+    var firstFocusableEl = $(focusParams.containerSelector + ' ' + focusParams.firstElementSelector);
+    var lastFocusableEl = $(focusParams.containerSelector + ' ' + focusParams.lastElementSelector);
+
+    if ($(focusParams.containerSelector + ' ' + focusParams.lastElementSelector).is(':disabled')) {
+      lastFocusableEl = $(focusParams.containerSelector + ' ' + focusParams.nextToLastElementSelector);
+
+      if ($('.product-quickview.product-set').length > 0) {
+        var linkElements = $(focusParams.containerSelector + ' a#fa-link.share-icons');
+        lastFocusableEl = linkElements[linkElements.length - 1];
+      }
+    }
+
+    if (focusParams.event.shiftKey)
+      /* shift + tab */
+      {
+        if ($(':focus').is(firstFocusableEl)) {
+          lastFocusableEl.focus();
+          focusParams.event.preventDefault();
+        }
+      } else
+      /* tab */
+      {
+        if ($(':focus').is(lastFocusableEl)) {
+          // eslint-disable-line
+          firstFocusableEl.focus();
+          focusParams.event.preventDefault();
+        }
+      }
+  }
+};
+
+/***/ }),
+
 /***/ "./cartridges/app_storefront_base/cartridge/client/default/js/product/base.js":
 /*!************************************************************************************!*\
   !*** ./cartridges/app_storefront_base/cartridge/client/default/js/product/base.js ***!
@@ -95,11 +147,14 @@
 
 "use strict";
 
+
+var focusHelper = __webpack_require__(/*! ../components/focus */ "./cartridges/app_storefront_base/cartridge/client/default/js/components/focus.js");
 /**
  * Retrieves the relevant pid value
  * @param {jquery} $el - DOM container for a given add to cart button
  * @return {string} - value to be used when adding product to cart
  */
+
 
 function getPidValue($el) {
   var pid;
@@ -146,24 +201,27 @@ function getQuantitySelected($el) {
  *     selected.  If there is no variant that corresponds to a specific combination of attribute
  *     values, an attribute may be disabled in the Product Detail Page
  * @param {jQuery} $productContainer - DOM container for a given product
+ * @param {Object} msgs - object containing resource messages
  */
 
 
-function processSwatchValues(attr, $productContainer) {
+function processSwatchValues(attr, $productContainer, msgs) {
   attr.values.forEach(function (attrValue) {
     var $attrValue = $productContainer.find('[data-attr="' + attr.id + '"] [data-attr-value="' + attrValue.value + '"]');
-    var $swatchAnchor = $attrValue.parent();
+    var $swatchButton = $attrValue.parent();
 
     if (attrValue.selected) {
       $attrValue.addClass('selected');
+      $attrValue.siblings('.selected-assistive-text').text(msgs.assistiveSelectedText);
     } else {
       $attrValue.removeClass('selected');
+      $attrValue.siblings('.selected-assistive-text').empty();
     }
 
     if (attrValue.url) {
-      $swatchAnchor.attr('href', attrValue.url);
+      $swatchButton.attr('data-url', attrValue.url);
     } else {
-      $swatchAnchor.removeAttr('href');
+      $swatchButton.removeAttr('data-url');
     } // Disable if not selectable
 
 
@@ -206,15 +264,16 @@ function processNonSwatchValues(attr, $productContainer) {
  * @param {Object} attrs - Attribute
  * @param {string} attr.id - Attribute ID
  * @param {jQuery} $productContainer - DOM element for a given product
+ * @param {Object} msgs - object containing resource messages
  */
 
 
-function updateAttrs(attrs, $productContainer) {
+function updateAttrs(attrs, $productContainer, msgs) {
   // Currently, the only attribute type that has image swatches is Color.
   var attrsWithSwatches = ['color'];
   attrs.forEach(function (attr) {
     if (attrsWithSwatches.indexOf(attr.id) > -1) {
-      processSwatchValues(attr, $productContainer);
+      processSwatchValues(attr, $productContainer, msgs);
     } else {
       processNonSwatchValues(attr, $productContainer);
     }
@@ -234,10 +293,10 @@ function updateAvailability(response, $productContainer) {
   var availabilityMessages = response.product.availability.messages;
 
   if (!response.product.readyToOrder) {
-    availabilityValue = '<div>' + response.resources.info_selectforstock + '</div>';
+    availabilityValue = '<li><div>' + response.resources.info_selectforstock + '</div></li>';
   } else {
     availabilityMessages.forEach(function (message) {
-      availabilityValue += '<div>' + message + '</div>';
+      availabilityValue += '<li><div>' + message + '</div></li>';
     });
   }
 
@@ -247,25 +306,6 @@ function updateAvailability(response, $productContainer) {
     message: availabilityValue,
     resources: response.resources
   });
-}
-/**
- * Generates html for promotions section
- *
- * @param {array} promotions - list of promotions
- * @return {string} - Compiled HTML
- */
-
-
-function getPromotionsHtml(promotions) {
-  if (!promotions) {
-    return '';
-  }
-
-  var html = '';
-  promotions.forEach(function (promotion) {
-    html += '<div class="callout" title="' + promotion.details + '">' + promotion.calloutMsg + '</div>';
-  });
-  return html;
 }
 /**
  * Generates html for product attributes section
@@ -309,19 +349,42 @@ function getAttributesHtml(attributes) {
 /**
  * Updates DOM using post-option selection Ajax response
  *
- * @param {OptionSelectionResponse} options - Ajax response options from selecting a product option
+ * @param {OptionSelectionResponse} optionsHtml - Ajax response optionsHtml from selecting a product option
  * @param {jQuery} $productContainer - DOM element for current product
  */
 
 
-function updateOptions(options, $productContainer) {
-  options.forEach(function (option) {
-    var $optionEl = $productContainer.find('.product-option[data-option-id*="' + option.id + '"]');
-    option.values.forEach(function (value) {
-      var valueEl = $optionEl.find('option[data-value-id*="' + value.id + '"]');
-      valueEl.val(value.url);
-    });
-  });
+function updateOptions(optionsHtml, $productContainer) {
+  // Update options
+  $productContainer.find('.product-options').empty().html(optionsHtml);
+}
+/**
+ * Dynamically creates Bootstrap carousel from response containing images
+ * @param {Object[]} imgs - Array of large product images,along with related information
+ * @param {jQuery} $productContainer - DOM element for a given product
+ */
+
+
+function createCarousel(imgs, $productContainer) {
+  var carousel = $productContainer.find('.carousel');
+  $(carousel).carousel('dispose');
+  var carouselId = $(carousel).attr('id');
+  $(carousel).empty().append('<ol class="carousel-indicators"></ol><div class="carousel-inner" role="listbox"></div><a class="carousel-control-prev" href="#' + carouselId + '" role="button" data-slide="prev"><span class="fa icon-prev" aria-hidden="true"></span><span class="sr-only">' + $(carousel).data('prev') + '</span></a><a class="carousel-control-next" href="#' + carouselId + '" role="button" data-slide="next"><span class="fa icon-next" aria-hidden="true"></span><span class="sr-only">' + $(carousel).data('next') + '</span></a>');
+
+  for (var i = 0; i < imgs.length; i++) {
+    $('<div class="carousel-item"><img src="' + imgs[i].url + '" class="d-block img-fluid" alt="' + imgs[i].alt + ' image number ' + parseInt(imgs[i].index, 10) + '" title="' + imgs[i].title + '" itemprop="image" /></div>').appendTo($(carousel).find('.carousel-inner'));
+    $('<li data-target="#' + carouselId + '" data-slide-to="' + i + '" class=""></li>').appendTo($(carousel).find('.carousel-indicators'));
+  }
+
+  $($(carousel).find('.carousel-item')).first().addClass('active');
+  $($(carousel).find('.carousel-indicators > li')).first().addClass('active');
+
+  if (imgs.length === 1) {
+    $($(carousel).find('.carousel-indicators, a[class^="carousel-control-"]')).detach();
+  }
+
+  $(carousel).carousel();
+  $($(carousel).find('.carousel-indicators')).attr('aria-hidden', true);
 }
 /**
  * Parses JSON from Ajax call made whenever an attribute value is [de]selected
@@ -342,7 +405,7 @@ function handleVariantResponse(response, $productContainer) {
   var isVaraint;
 
   if (response.product.variationAttributes) {
-    updateAttrs(response.product.variationAttributes, $productContainer);
+    updateAttrs(response.product.variationAttributes, $productContainer, response.resources);
     isVaraint = response.product.productType === 'variant';
 
     if (isChoiceOfBonusProducts && isVaraint) {
@@ -352,10 +415,8 @@ function handleVariantResponse(response, $productContainer) {
   } // Update primary images
 
 
-  var primaryImageUrls = response.product.images;
-  primaryImageUrls.large.forEach(function (imageUrl, idx) {
-    $productContainer.find('.primary-images').find('img').eq(idx).attr('src', imageUrl.url);
-  }); // Update pricing
+  var primaryImageUrls = response.product.images.large;
+  createCarousel(primaryImageUrls, $productContainer); // Update pricing
 
   if (!isChoiceOfBonusProducts) {
     var $priceSelector = $('.prices .price', $productContainer).length ? $('.prices .price', $productContainer) : $('.prices .price');
@@ -363,7 +424,7 @@ function handleVariantResponse(response, $productContainer) {
   } // Update promotions
 
 
-  $('.promotions').empty().html(getPromotionsHtml(response.product.promotions));
+  $productContainer.find('.promotions').empty().html(response.product.promotionsHtml);
   updateAvailability(response, $productContainer);
 
   if (isChoiceOfBonusProducts) {
@@ -427,7 +488,7 @@ function attributeSelect(selectedValueUrl, $productContainer) {
       method: 'GET',
       success: function success(data) {
         handleVariantResponse(data, $productContainer);
-        updateOptions(data.product.options, $productContainer);
+        updateOptions(data.product.optionsHtml, $productContainer);
         updateQuantities(data.product.quantities, $productContainer);
         $('body').trigger('product:afterAttributeSelect', {
           data: data,
@@ -490,16 +551,18 @@ function chooseBonusProducts(data) {
     bonusUrl = data.showProductsUrlListBased;
   }
 
-  var htmlString = '<!-- Modal -->' + '<div class="modal fade" id="chooseBonusProductModal" role="dialog">' + '<div class="modal-dialog choose-bonus-product-dialog" ' + 'data-total-qty="' + data.maxBonusItems + '"' + 'data-UUID="' + data.uuid + '"' + 'data-pliUUID="' + data.pliUUID + '"' + 'data-addToCartUrl="' + data.addToCartUrl + '"' + 'data-pageStart="0"' + 'data-pageSize="' + data.pageSize + '"' + 'data-moreURL="' + data.showProductsUrlRuleBased + '"' + 'data-bonusChoiceRuleBased="' + data.bonusChoiceRuleBased + '">' + '<!-- Modal content-->' + '<div class="modal-content">' + '<div class="modal-header">' + '    <span class="">' + data.labels.selectprods + '</span>' + '    <button type="button" class="close pull-right" data-dismiss="modal">&times;</button>' + '</div>' + '<div class="modal-body"></div>' + '<div class="modal-footer"></div>' + '</div>' + '</div>' + '</div>';
+  var htmlString = '<!-- Modal -->' + '<div class="modal fade" id="chooseBonusProductModal" tabindex="-1" role="dialog">' + '<span class="enter-message sr-only" ></span>' + '<div class="modal-dialog choose-bonus-product-dialog" ' + 'data-total-qty="' + data.maxBonusItems + '"' + 'data-UUID="' + data.uuid + '"' + 'data-pliUUID="' + data.pliUUID + '"' + 'data-addToCartUrl="' + data.addToCartUrl + '"' + 'data-pageStart="0"' + 'data-pageSize="' + data.pageSize + '"' + 'data-moreURL="' + data.showProductsUrlRuleBased + '"' + 'data-bonusChoiceRuleBased="' + data.bonusChoiceRuleBased + '">' + '<!-- Modal content-->' + '<div class="modal-content">' + '<div class="modal-header">' + '    <span class="">' + data.labels.selectprods + '</span>' + '    <button type="button" class="close pull-right" data-dismiss="modal">' + '        <span aria-hidden="true">&times;</span>' + '        <span class="sr-only"> </span>' + '    </button>' + '</div>' + '<div class="modal-body"></div>' + '<div class="modal-footer"></div>' + '</div>' + '</div>' + '</div>';
   $('body').append(htmlString);
   $('.modal-body').spinner().start();
   $.ajax({
     url: bonusUrl,
     method: 'GET',
-    dataType: 'html',
-    success: function success(html) {
-      var parsedHtml = parseHtml(html);
+    dataType: 'json',
+    success: function success(response) {
+      var parsedHtml = parseHtml(response.renderedTemplate);
       $('#chooseBonusProductModal .modal-body').empty();
+      $('#chooseBonusProductModal .enter-message').text(response.enterDialogMessage);
+      $('#chooseBonusProductModal .modal-header .close .sr-only').text(response.closeButtonText);
       $('#chooseBonusProductModal .modal-body').html(parsedHtml.body);
       $('#chooseBonusProductModal .modal-footer').html(parsedHtml.footer);
       $('#chooseBonusProductModal').modal('show');
@@ -571,6 +634,25 @@ function getOptions($productContainer) {
   }).toArray();
   return JSON.stringify(options);
 }
+/**
+ * Makes a call to the server to report the event of adding an item to the cart
+ *
+ * @param {string | boolean} url - a string representing the end point to hit so that the event can be recorded, or false
+ */
+
+
+function miniCartReportingUrl(url) {
+  if (url) {
+    $.ajax({
+      url: url,
+      method: 'GET',
+      success: function success() {// reporting urls hit on the server
+      },
+      error: function error() {// no reporting urls hit on the server
+      }
+    });
+  }
+}
 
 module.exports = {
   attributeSelect: attributeSelect,
@@ -579,8 +661,30 @@ module.exports = {
       chooseBonusProducts(data);
     }
   },
+  focusChooseBonusProductModal: function focusChooseBonusProductModal() {
+    $('body').on('shown.bs.modal', '#chooseBonusProductModal', function () {
+      $('#chooseBonusProductModal').siblings().attr('aria-hidden', 'true');
+      $('#chooseBonusProductModal .close').focus();
+    });
+  },
+  onClosingChooseBonusProductModal: function onClosingChooseBonusProductModal() {
+    $('body').on('hidden.bs.modal', '#chooseBonusProductModal', function () {
+      $('#chooseBonusProductModal').siblings().attr('aria-hidden', 'false');
+    });
+  },
+  trapChooseBonusProductModalFocus: function trapChooseBonusProductModalFocus() {
+    $('body').on('keydown', '#chooseBonusProductModal', function (e) {
+      var focusParams = {
+        event: e,
+        containerSelector: '#chooseBonusProductModal',
+        firstElementSelector: '.close',
+        lastElementSelector: '.add-bonus-products'
+      };
+      focusHelper.setTabNextFocus(focusParams);
+    });
+  },
   colorAttribute: function colorAttribute() {
-    $(document).on('click', '[data-attr="color"] a', function (e) {
+    $(document).on('click', '[data-attr="color"] button', function (e) {
       e.preventDefault();
 
       if ($(this).attr('disabled')) {
@@ -593,7 +697,7 @@ module.exports = {
         $productContainer = $(this).closest('.product-detail');
       }
 
-      attributeSelect(e.currentTarget.href, $productContainer);
+      attributeSelect($(this).attr('data-url'), $productContainer);
     });
   },
   selectAttribute: function selectAttribute() {
@@ -674,6 +778,7 @@ module.exports = {
             handlePostCartAdd(data);
             $('body').trigger('product:afterAddToCart', data);
             $.spinner().stop();
+            miniCartReportingUrl(data.reportingURL);
           },
           error: function error() {
             $.spinner().stop();
@@ -687,14 +792,14 @@ module.exports = {
       var $choiceOfBonusProduct = $(this).parents('.choice-of-bonus-product');
       var pid = $(this).data('pid');
       var maxPids = $('.choose-bonus-product-dialog').data('total-qty');
-      var submittedQty = parseInt($(this).parents('.choice-of-bonus-product').find('.bonus-quantity-select').val(), 10);
+      var submittedQty = parseInt($choiceOfBonusProduct.find('.bonus-quantity-select').val(), 10);
       var totalQty = 0;
       $.each($('#chooseBonusProductModal .selected-bonus-products .selected-pid'), function () {
         totalQty += $(this).data('qty');
       });
       totalQty += submittedQty;
-      var optionID = $(this).parents('.choice-of-bonus-product').find('.product-option').data('option-id');
-      var valueId = $(this).parents('.choice-of-bonus-product').find('.options-select option:selected').data('valueId');
+      var optionID = $choiceOfBonusProduct.find('.product-option').data('option-id');
+      var valueId = $choiceOfBonusProduct.find('.options-select option:selected').data('valueId');
 
       if (totalQty <= maxPids) {
         var selectedBonusProductHtml = '' + '<div class="selected-pid row" ' + 'data-pid="' + pid + '"' + 'data-qty="' + submittedQty + '"' + 'data-optionID="' + (optionID || '') + '"' + 'data-option-selected-value="' + (valueId || '') + '"' + '>' + '<div class="col-sm-11 col-9 bonus-product-name" >' + $choiceOfBonusProduct.find('.product-name').html() + '</div>' + '<div class="col-1"><i class="fa fa-times" aria-hidden="true"></i></div>' + '</div>';
@@ -726,7 +831,7 @@ module.exports = {
     $('body').on('bonusproduct:updateSelectButton', function (e, response) {
       $('button.select-bonus-product', response.$productContainer).attr('disabled', !response.product.readyToOrder || !response.product.available);
       var pid = response.product.id;
-      $('button.select-bonus-product').data('pid', pid);
+      $('button.select-bonus-product', response.$productContainer).data('pid', pid);
     });
   },
   showMoreBonusProducts: function showMoreBonusProducts() {
@@ -787,7 +892,16 @@ module.exports = {
           $.spinner().stop();
 
           if (data.error) {
-            $('.error-choice-of-bonus-products').html(data.errorMessage);
+            $('#chooseBonusProductModal').modal('hide');
+
+            if ($('.add-to-cart-messages').length === 0) {
+              $('body').append('<div class="add-to-cart-messages"></div>');
+            }
+
+            $('.add-to-cart-messages').append('<div class="alert alert-danger add-to-basket-alert text-center"' + ' role="alert">' + data.errorMessage + '</div>');
+            setTimeout(function () {
+              $('.add-to-basket-alert').remove();
+            }, 3000);
           } else {
             $('.configure-bonus-product-attributes').html(data);
             $('.bonus-products-step2').removeClass('hidden-xl-down');
@@ -805,7 +919,7 @@ module.exports = {
               if ($('.cart-page').length) {
                 location.reload();
               }
-            }, 3000);
+            }, 1500);
           }
         },
         error: function error() {
@@ -814,7 +928,9 @@ module.exports = {
       });
     });
   },
-  getPidValue: getPidValue
+  getPidValue: getPidValue,
+  getQuantitySelected: getQuantitySelected,
+  miniCartReportingUrl: miniCartReportingUrl
 };
 
 /***/ }),
@@ -901,30 +1017,47 @@ module.exports = {
     });
   },
   sizeChart: function sizeChart() {
-    var $sizeChart = $('.size-chart-collapsible');
     $('.size-chart a').on('click', function (e) {
       e.preventDefault();
       var url = $(this).attr('href');
+      var $prodSizeChart = $(this).closest('.size-chart').find('.size-chart-collapsible');
 
-      if ($sizeChart.is(':empty')) {
+      if ($prodSizeChart.is(':empty')) {
         $.ajax({
           url: url,
           type: 'get',
           dataType: 'json',
           success: function success(data) {
-            $sizeChart.append(data.content);
+            $prodSizeChart.append(data.content);
           }
         });
       }
 
-      $sizeChart.toggleClass('active');
+      $prodSizeChart.toggleClass('active');
     });
+    var $sizeChart = $('.size-chart-collapsible');
     $('body').on('click touchstart', function (e) {
       if ($('.size-chart').has(e.target).length <= 0) {
         $sizeChart.removeClass('active');
       }
     });
-  }
+  },
+  copyProductLink: function copyProductLink() {
+    $('body').on('click', '#fa-link', function () {
+      event.preventDefault();
+      var $temp = $('<input>');
+      $('body').append($temp);
+      $temp.val($('#shareUrl').val()).select();
+      document.execCommand('copy');
+      $temp.remove();
+      $('.copy-link-message').attr('role', 'alert');
+      $('.copy-link-message').removeClass('d-none');
+      setTimeout(function () {
+        $('.copy-link-message').addClass('d-none');
+      }, 3000);
+    });
+  },
+  focusChooseBonusProductModal: base.focusChooseBonusProductModal()
 };
 
 /***/ }),

@@ -17,12 +17,15 @@ module.exports = {
     attributes: require('*/cartridge/models/product/decorators/attributes'),
     options: require('*/cartridge/models/product/decorators/options'),
     currentUrl: require('*/cartridge/models/product/decorators/currentUrl'),
+    online: require('*/cartridge/models/product/decorators/online'),
     readyToOrder: require('*/cartridge/models/product/decorators/readyToOrder'),
     setReadyToOrder: require('*/cartridge/models/product/decorators/setReadyToOrder'),
     bundleReadyToOrder: require('*/cartridge/models/product/decorators/bundleReadyToOrder'),
     setIndividualProducts: require('*/cartridge/models/product/decorators/setIndividualProducts'),
+    setProductsCollection: require('*/cartridge/models/product/decorators/setProductsCollection'),
     bundledProducts: require('*/cartridge/models/product/decorators/bundledProducts'),
     bonusUnitPrice: require('*/cartridge/models/product/decorators/bonusUnitPrice'),
     raw: require('*/cartridge/models/product/decorators/raw'),
-    pageMetaData: require('*/cartridge/models/product/decorators/pageMetaData')
+    pageMetaData: require('*/cartridge/models/product/decorators/pageMetaData'),
+    template: require('*/cartridge/models/product/decorators/template')
 };

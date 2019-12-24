@@ -132,7 +132,7 @@ module.exports = function (formElement, payload) {
 
   if (payload && payload.error) {
     var form = $(formElement).prop('tagName') === 'FORM' ? $(formElement) : $(formElement).parents('form');
-    form.prepend('<div class="alert alert-danger">' + payload.error.join('<br/>') + '</div>');
+    form.prepend('<div class="alert alert-danger" role="alert">' + payload.error.join('<br/>') + '</div>');
   }
 };
 

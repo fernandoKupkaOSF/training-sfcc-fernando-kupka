@@ -16,7 +16,7 @@ var urlHelper = require('*/cartridge/scripts/helpers/urlHelpers');
  *
  * @param {dw.catalog.ProductOptionModel} optionModel - A product's option model
  * @param {dw.catalog.ProductOption} option - A product's option
- * @param {dw.util.Collection <dw.catalog.ProductOptionValue>} optionValues - Product option values
+ * @param {dw.util.Collection<dw.catalog.ProductOptionValue>} optionValues - Product option values
  * @param {Object} attributeVariables - Variation attribute query params
  * @return {ProductOptionValues} - View model for a product option's values
  */
@@ -176,6 +176,34 @@ function getVariationModel(product, productVariables) {
 }
 
 /**
+ * If a product is master and only have one variant for a given attribute - auto select it
+ * @param {dw.catalog.Product} apiProduct - Product from the API
+ * @param {Object} params - Parameters passed by querystring
+ *
+ * @returns {Object} - Object with selected parameters
+ */
+function normalizeSelectedAttributes(apiProduct, params) {
+    if (!apiProduct.master) {
+        return params.variables;
+    }
+
+    var variables = params.variables || {};
+    if (apiProduct.variationModel) {
+        collections.forEach(apiProduct.variationModel.productVariationAttributes, function (attribute) {
+            var allValues = apiProduct.variationModel.getAllValues(attribute);
+            if (allValues.length === 1) {
+                variables[attribute.ID] = {
+                    id: apiProduct.ID,
+                    value: allValues.get(0).ID
+                };
+            }
+        });
+    }
+
+    return Object.keys(variables) ? variables : null;
+}
+
+/**
  * Get information for model creation
  * @param {dw.catalog.Product} apiProduct - Product from the API
  * @param {Object} params - Parameters passed by querystring
@@ -183,7 +211,8 @@ function getVariationModel(product, productVariables) {
  * @returns {Object} - Config object
  */
 function getConfig(apiProduct, params) {
-    var variationModel = getVariationModel(apiProduct, params.variables);
+    var variables = normalizeSelectedAttributes(apiProduct, params);
+    var variationModel = getVariationModel(apiProduct, variables);
     if (variationModel) {
         apiProduct = variationModel.selectedVariant || apiProduct; // eslint-disable-line
     }
@@ -196,7 +225,7 @@ function getConfig(apiProduct, params) {
         optionModel: optionsModel,
         promotions: promotions,
         quantity: params.quantity,
-        variables: params.variables,
+        variables: variables,
         apiProduct: apiProduct,
         productType: getProductType(apiProduct)
     };
@@ -207,10 +236,10 @@ function getConfig(apiProduct, params) {
 /**
  * Retrieve product's options and default selected values from product line item
  *
- * @param {dw.util.Collection.<dw.order.ProductLineItem>} optionProductLineItems - Option product
+ * @param {dw.util.Collection<dw.order.ProductLineItem>} optionProductLineItems - Option product
  *     line items
  * @param {string} productId - Line item product ID
- * @return {string []} - Product line item options
+ * @return {string[]} - Product line item options
  */
 function getLineItemOptions(optionProductLineItems, productId) {
     return collections.map(optionProductLineItems, function (item) {
@@ -226,8 +255,8 @@ function getLineItemOptions(optionProductLineItems, productId) {
  * Retrieve product's options and default values
  *
  * @param {dw.catalog.ProductOptionModel} optionModel - A product's option model
- * @param {dw.util.Collection.<dw.catalog.ProductOption>} options - A product's configured options
- * @return {string []} - Product line item options
+ * @param {dw.util.Collection<dw.catalog.ProductOption>} options - A product's configured options
+ * @return {string[]} - Product line item options
  */
 function getDefaultOptions(optionModel, options) {
     return collections.map(options, function (option) {
@@ -239,7 +268,7 @@ function getDefaultOptions(optionModel, options) {
 /**
  * Retrieve product's options default selected values, id and name from product line item
  *
- * @param {dw.util.Collection.<dw.order.ProductLineItem>} optionProductLineItems - Option product
+ * @param {dw.util.Collection<dw.order.ProductLineItem>} optionProductLineItems - Option product
  *     line items
  * @return {string[]} - Product line item option display values, id and name
  */
@@ -253,6 +282,99 @@ function getLineItemOptionNames(optionProductLineItems) {
     });
 }
 
+/**
+ * Creates the breadcrumbs object
+ * @param {string} cgid - category ID from navigation and search
+ * @param {string} pid - product ID
+ * @param {Array} breadcrumbs - array of breadcrumbs object
+ * @returns {Array} an array of breadcrumb objects
+ */
+function getAllBreadcrumbs(cgid, pid, breadcrumbs) {
+    var URLUtils = require('dw/web/URLUtils');
+    var CatalogMgr = require('dw/catalog/CatalogMgr');
+    var ProductMgr = require('dw/catalog/ProductMgr');
+
+    var category;
+    var product;
+    if (pid) {
+        product = ProductMgr.getProduct(pid);
+        category = product.variant
+            ? product.masterProduct.primaryCategory
+            : product.primaryCategory;
+    } else if (cgid) {
+        category = CatalogMgr.getCategory(cgid);
+    }
+
+    if (category) {
+        breadcrumbs.push({
+            htmlValue: category.displayName,
+            url: URLUtils.url('Search-Show', 'cgid', category.ID)
+        });
+
+        if (category.parent && category.parent.ID !== 'root') {
+            return getAllBreadcrumbs(category.parent.ID, null, breadcrumbs);
+        }
+    }
+
+    return breadcrumbs;
+}
+
+/**
+ * Generates a map of string resources for the template
+ *
+ * @returns {ProductDetailPageResourceMap} - String resource map
+ */
+function getResources() {
+    var Resource = require('dw/web/Resource');
+
+    return {
+        info_selectforstock: Resource.msg('info.selectforstock', 'product',
+            'Select Styles for Availability'),
+        assistiveSelectedText: Resource.msg('msg.assistive.selected.text', 'common', null)
+    };
+}
+
+/**
+ * Renders the Product Details Page
+ * @param {Object} querystring - query string parameters
+ * @param {Object} reqPageMetaData - request pageMetaData object
+ * @returns {Object} contain information needed to render the product page
+ */
+function showProductPage(querystring, reqPageMetaData) {
+    var URLUtils = require('dw/web/URLUtils');
+    var ProductFactory = require('*/cartridge/scripts/factories/product');
+    var pageMetaHelper = require('*/cartridge/scripts/helpers/pageMetaHelper');
+
+    var params = querystring;
+    var product = ProductFactory.get(params);
+    var addToCartUrl = URLUtils.url('Cart-AddProduct');
+    var canonicalUrl = URLUtils.url('Product-Show', 'pid', product.id);
+    var breadcrumbs = getAllBreadcrumbs(null, product.id, []).reverse();
+    var template = 'product/productDetails';
+
+    if (product.productType === 'bundle' && !product.template) {
+        template = 'product/bundleDetails';
+    } else if (product.productType === 'set' && !product.template) {
+        template = 'product/setDetails';
+    } else if (product.template) {
+        template = product.template;
+    }
+
+    pageMetaHelper.setPageMetaData(reqPageMetaData, product);
+    pageMetaHelper.setPageMetaTags(reqPageMetaData, product);
+    var schemaData = require('*/cartridge/scripts/helpers/structuredDataHelper').getProductSchema(product);
+
+    return {
+        template: template,
+        product: product,
+        addToCartUrl: addToCartUrl,
+        resources: getResources(),
+        breadcrumbs: breadcrumbs,
+        canonicalUrl: canonicalUrl,
+        schemaData: schemaData
+    };
+}
+
 module.exports = {
     getOptionValues: getOptionValues,
     getOptions: getOptions,
@@ -263,5 +385,8 @@ module.exports = {
     getConfig: getConfig,
     getLineItemOptions: getLineItemOptions,
     getDefaultOptions: getDefaultOptions,
-    getLineItemOptionNames: getLineItemOptionNames
+    getLineItemOptionNames: getLineItemOptionNames,
+    showProductPage: showProductPage,
+    getAllBreadcrumbs: getAllBreadcrumbs,
+    getResources: getResources
 };

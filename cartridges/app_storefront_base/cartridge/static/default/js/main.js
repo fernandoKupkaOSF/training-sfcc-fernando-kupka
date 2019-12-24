@@ -97,6 +97,8 @@
 
 
 var base = __webpack_require__(/*! ../product/base */ "./cartridges/app_storefront_base/cartridge/client/default/js/product/base.js");
+
+var focusHelper = __webpack_require__(/*! ../components/focus */ "./cartridges/app_storefront_base/cartridge/client/default/js/components/focus.js");
 /**
  * appends params to a url
  * @param {string} url - Original url
@@ -128,6 +130,10 @@ function validateBasket(data) {
       $('.cart').empty().append('<div class="row"> ' + '<div class="col-12 text-center"> ' + '<h1>' + data.resources.emptyCartMsg + '</h1> ' + '</div> ' + '</div>');
       $('.number-of-items').empty().append(data.resources.numberOfItems);
       $('.minicart-quantity').empty().append(data.numItems);
+      $('.minicart-link').attr({
+        'aria-label': data.resources.minicartCountOfItems,
+        title: data.resources.minicartCountOfItems
+      });
       $('.minicart .popover').empty();
       $('.minicart .popover').removeClass('show');
     }
@@ -150,6 +156,10 @@ function updateCartTotals(data) {
   $('.grand-total').empty().append(data.totals.grandTotal);
   $('.sub-total').empty().append(data.totals.subTotal);
   $('.minicart-quantity').empty().append(data.numItems);
+  $('.minicart-link').attr({
+    'aria-label': data.resources.minicartCountOfItems,
+    title: data.resources.minicartCountOfItems
+  });
 
   if (data.totals.orderLevelDiscountTotal.value > 0) {
     $('.order-discount').removeClass('hide-order-discount');
@@ -166,8 +176,13 @@ function updateCartTotals(data) {
   }
 
   data.items.forEach(function (item) {
-    $('.item-' + item.UUID).empty().append(item.renderedPromotions);
-    $('.item-total-' + item.UUID).empty().append(item.priceTotal.renderedPrice);
+    if (item.renderedPromotions) {
+      $('.item-' + item.UUID).empty().append(item.renderedPromotions);
+    }
+
+    if (item.priceTotal && item.priceTotal.renderedPrice) {
+      $('.item-total-' + item.UUID).empty().append(item.priceTotal.renderedPrice);
+    }
   });
 }
 /**
@@ -233,6 +248,23 @@ function updateAvailability(data, uuid) {
   $('.availability-' + lineItem.UUID).html(messages);
 }
 /**
+ * Finds an element in the array that matches search parameter
+ * @param {array} array - array of items to search
+ * @param {function} match - function that takes an element and returns a boolean indicating if the match is made
+ * @returns {Object|null} - returns an element of the array that matched the query.
+ */
+
+
+function findItem(array, match) {
+  for (var i = 0, l = array.length; i < l; i++) {
+    if (match.call(this, array[i])) {
+      return array[i];
+    }
+  }
+
+  return null;
+}
+/**
  * Updates details of a product line item
  * @param {Object} data - AJAX response from the server
  * @param {string} uuid - The uuid of the product line item to update
@@ -240,12 +272,12 @@ function updateAvailability(data, uuid) {
 
 
 function updateProductDetails(data, uuid) {
-  var lineItem = data.cartModel.items.find(function (item) {
+  var lineItem = findItem(data.cartModel.items, function (item) {
     return item.UUID === uuid;
   });
 
   if (lineItem.variationAttributes) {
-    var colorAttr = lineItem.variationAttributes.find(function (attr) {
+    var colorAttr = findItem(lineItem.variationAttributes, function (attr) {
       return attr.attributeId === 'color';
     });
 
@@ -255,7 +287,7 @@ function updateProductDetails(data, uuid) {
       $(colorSelector).text(newColor);
     }
 
-    var sizeAttr = lineItem.variationAttributes.find(function (attr) {
+    var sizeAttr = findItem(lineItem.variationAttributes, function (attr) {
       return attr.attributeId === 'size';
     });
 
@@ -269,6 +301,13 @@ function updateProductDetails(data, uuid) {
     $(imageSelector).attr('src', lineItem.images.small[0].url);
     $(imageSelector).attr('alt', lineItem.images.small[0].alt);
     $(imageSelector).attr('title', lineItem.images.small[0].title);
+  }
+
+  if (lineItem.options && lineItem.options.length) {
+    var option = lineItem.options[0];
+    var optSelector = '.lineItem-options-values[data-option-id="' + option.optionId + '"]';
+    $(optSelector).data('value-id', option.selectedValueId);
+    $(optSelector + ' .line-item-attributes').text(option.displayName);
   }
 
   var qtySelector = '.quantity[data-uuid="' + uuid + '"]';
@@ -296,7 +335,7 @@ function getModalHtmlElement() {
     $('#editProductModal').remove();
   }
 
-  var htmlString = '<!-- Modal -->' + '<div class="modal fade" id="editProductModal" role="dialog">' + '<div class="modal-dialog quick-view-dialog">' + '<!-- Modal content-->' + '<div class="modal-content">' + '<div class="modal-header">' + '    <button type="button" class="close pull-right" data-dismiss="modal">' + '        &times;' + '    </button>' + '</div>' + '<div class="modal-body"></div>' + '<div class="modal-footer"></div>' + '</div>' + '</div>' + '</div>';
+  var htmlString = '<!-- Modal -->' + '<div class="modal fade" id="editProductModal" tabindex="-1" role="dialog">' + '<span class="enter-message sr-only" ></span>' + '<div class="modal-dialog quick-view-dialog">' + '<!-- Modal content-->' + '<div class="modal-content">' + '<div class="modal-header">' + '    <button type="button" class="close pull-right" data-dismiss="modal">' + '        <span aria-hidden="true">&times;</span>' + '        <span class="sr-only"> </span>' + '    </button>' + '</div>' + '<div class="modal-body"></div>' + '<div class="modal-footer"></div>' + '</div>' + '</div>' + '</div>';
   $('body').append(htmlString);
 }
 /**
@@ -327,12 +366,14 @@ function fillModalElement(editProductUrl) {
   $.ajax({
     url: editProductUrl,
     method: 'GET',
-    dataType: 'html',
-    success: function success(html) {
-      var parsedHtml = parseHtml(html);
+    dataType: 'json',
+    success: function success(data) {
+      var parsedHtml = parseHtml(data.renderedTemplate);
       $('#editProductModal .modal-body').empty();
       $('#editProductModal .modal-body').html(parsedHtml.body);
       $('#editProductModal .modal-footer').html(parsedHtml.footer);
+      $('#editProductModal .modal-header .close .sr-only').text(data.closeButtonText);
+      $('#editProductModal .enter-message').text(data.enterDialogMessage);
       $('#editProductModal').modal('show');
       $.spinner().stop();
     },
@@ -397,6 +438,10 @@ module.exports = function () {
           $('.cart').empty().append('<div class="row"> ' + '<div class="col-12 text-center"> ' + '<h1>' + data.basket.resources.emptyCartMsg + '</h1> ' + '</div> ' + '</div>');
           $('.number-of-items').empty().append(data.basket.resources.numberOfItems);
           $('.minicart-quantity').empty().append(data.basket.numItems);
+          $('.minicart-link').attr({
+            'aria-label': data.basket.resources.minicartCountOfItems,
+            title: data.basket.resources.minicartCountOfItems
+          });
           $('.minicart .popover').empty();
           $('.minicart .popover').removeClass('show');
           $('body').removeClass('modal-open');
@@ -421,6 +466,7 @@ module.exports = function () {
           validateBasket(data.basket);
         }
 
+        $('body').trigger('cart:update');
         $.spinner().stop();
       },
       error: function error(err) {
@@ -459,6 +505,7 @@ module.exports = function () {
         updateAvailability(data, uuid);
         validateBasket(data);
         $(this).data('pre-select-qty', quantity);
+        $('body').trigger('cart:update');
         $.spinner().stop();
 
         if ($(this).parents('.product-info').hasClass('bonus-product-line-item') && $('.cart-page').length) {
@@ -518,6 +565,7 @@ module.exports = function () {
 
     if (!$('.coupon-code-field').val()) {
       $('.promo-code-form .form-control').addClass('is-invalid');
+      $('.promo-code-form .form-control').attr('aria-describedby', 'missingCouponCode');
       $('.coupon-missing-error').show();
       $.spinner().stop();
       return false;
@@ -534,6 +582,7 @@ module.exports = function () {
       success: function success(data) {
         if (data.error) {
           $('.promo-code-form .form-control').addClass('is-invalid');
+          $('.promo-code-form .form-control').attr('aria-describedby', 'invalidCouponCode');
           $('.coupon-error-message').empty().append(data.errorMessage);
         } else {
           $('.coupons-and-promos').empty().append(data.totals.discountsHtml);
@@ -601,6 +650,7 @@ module.exports = function () {
   });
   $('body').on('click', '.cart-page .bonus-product-button', function () {
     $.spinner().start();
+    $(this).addClass('launched-modal');
     $.ajax({
       url: $(this).data('url'),
       method: 'GET',
@@ -614,11 +664,40 @@ module.exports = function () {
       }
     });
   });
+  $('body').on('hidden.bs.modal', '#chooseBonusProductModal', function () {
+    $('#chooseBonusProductModal').remove();
+    $('.modal-backdrop').remove();
+    $('body').removeClass('modal-open');
+
+    if ($('.cart-page').length) {
+      $('.launched-modal .btn-outline-primary').trigger('focus');
+      $('.launched-modal').removeClass('launched-modal');
+    } else {
+      $('.product-detail .add-to-cart').focus();
+    }
+  });
   $('body').on('click', '.cart-page .product-edit .edit, .cart-page .bundle-edit .edit', function (e) {
     e.preventDefault();
     var editProductUrl = $(this).attr('href');
     getModalHtmlElement();
     fillModalElement(editProductUrl);
+  });
+  $('body').on('shown.bs.modal', '#editProductModal', function () {
+    $('#editProductModal').siblings().attr('aria-hidden', 'true');
+    $('#editProductModal .close').focus();
+  });
+  $('body').on('hidden.bs.modal', '#editProductModal', function () {
+    $('#editProductModal').siblings().attr('aria-hidden', 'false');
+  });
+  $('body').on('keydown', '#editProductModal', function (e) {
+    var focusParams = {
+      event: e,
+      containerSelector: '#editProductModal',
+      firstElementSelector: '.close',
+      lastElementSelector: '.update-cart-product-global',
+      nextToLastElementSelector: '.modal-footer .quantity-select'
+    };
+    focusHelper.setTabNextFocus(focusParams);
   });
   $('body').on('product:updateAddToCart', function (e, response) {
     // update global add to cart (single products, bundles)
@@ -657,15 +736,21 @@ module.exports = function () {
     var selectedQuantity = $(this).val();
     $('.modal.show .update-cart-url').data('selected-quantity', selectedQuantity);
   });
+  $('body').on('change', '.options-select', function () {
+    var selectedOptionValueId = $(this).children('option:selected').data('value-id');
+    $('.modal.show .update-cart-url').data('selected-option', selectedOptionValueId);
+  });
   $('body').on('click', '.update-cart-product-global', function (e) {
     e.preventDefault();
     var updateProductUrl = $(this).closest('.cart-and-ipay').find('.update-cart-url').val();
     var selectedQuantity = $(this).closest('.cart-and-ipay').find('.update-cart-url').data('selected-quantity');
+    var selectedOptionValueId = $(this).closest('.cart-and-ipay').find('.update-cart-url').data('selected-option');
     var uuid = $(this).closest('.cart-and-ipay').find('.update-cart-url').data('uuid');
     var form = {
       uuid: uuid,
       pid: base.getPidValue($(this)),
-      quantity: selectedQuantity
+      quantity: selectedQuantity,
+      selectedOptionValueId: selectedOptionValueId
     };
     $(this).parents('.card').spinner().start();
 
@@ -677,9 +762,7 @@ module.exports = function () {
         data: form,
         dataType: 'json',
         success: function success(data) {
-          $('#editProductModal').remove();
-          $('.modal-backdrop').remove();
-          $('body').removeClass('modal-open');
+          $('#editProductModal').modal('hide');
           $('.coupons-and-promos').empty().append(data.cartModel.totals.discountsHtml);
           updateCartTotals(data.cartModel);
           updateApproachingDiscounts(data.cartModel.approachingDiscounts);
@@ -691,6 +774,7 @@ module.exports = function () {
           }
 
           validateBasket(data.cartModel);
+          $('body').trigger('cart:update');
           $.spinner().stop();
         },
         error: function error(err) {
@@ -711,6 +795,9 @@ module.exports = function () {
   base.enableBonusProductSelection();
   base.showMoreBonusProducts();
   base.addBonusProductsToCart();
+  base.focusChooseBonusProductModal();
+  base.trapChooseBonusProductModalFocus();
+  base.onClosingChooseBonusProductModal();
 };
 
 /***/ }),
@@ -827,10 +914,16 @@ module.exports = {
 module.exports = function () {
   var sizes = ['xs', 'sm', 'md', 'lg', 'xl'];
   sizes.forEach(function (size) {
-    var selector = '.collapsible-' + size + ' .title, .collapsible-' + size + '>.card-header';
+    var selector = '.collapsible-' + size + ' .title';
     $('body').on('click', selector, function (e) {
       e.preventDefault();
       $(this).parents('.collapsible-' + size).toggleClass('active');
+
+      if ($(this).parents('.collapsible-' + size).hasClass('active')) {
+        $(this).attr('aria-expanded', true);
+      } else {
+        $(this).attr('aria-expanded', false);
+      }
     });
   });
 };
@@ -883,12 +976,10 @@ function showConsentModal() {
       type: 'get',
       dataType: 'json',
       success: function success() {
-        $('#consent-tracking .modal-body').remove();
         $('#consent-tracking').remove();
         $.spinner().stop();
       },
       error: function error() {
-        $('#consent-tracking .modal-body').remove();
         $('#consent-tracking').remove();
         $.spinner().stop();
       }
@@ -1054,6 +1145,58 @@ module.exports = function () {
 
 /***/ }),
 
+/***/ "./cartridges/app_storefront_base/cartridge/client/default/js/components/focus.js":
+/*!****************************************************************************************!*\
+  !*** ./cartridges/app_storefront_base/cartridge/client/default/js/components/focus.js ***!
+  \****************************************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+module.exports = {
+  setTabNextFocus: function setTabNextFocus(focusParams) {
+    var KEYCODE_TAB = 9;
+    var isTabPressed = focusParams.event.key === 'Tab' || focusParams.event.keyCode === KEYCODE_TAB;
+
+    if (!isTabPressed) {
+      return;
+    }
+
+    var firstFocusableEl = $(focusParams.containerSelector + ' ' + focusParams.firstElementSelector);
+    var lastFocusableEl = $(focusParams.containerSelector + ' ' + focusParams.lastElementSelector);
+
+    if ($(focusParams.containerSelector + ' ' + focusParams.lastElementSelector).is(':disabled')) {
+      lastFocusableEl = $(focusParams.containerSelector + ' ' + focusParams.nextToLastElementSelector);
+
+      if ($('.product-quickview.product-set').length > 0) {
+        var linkElements = $(focusParams.containerSelector + ' a#fa-link.share-icons');
+        lastFocusableEl = linkElements[linkElements.length - 1];
+      }
+    }
+
+    if (focusParams.event.shiftKey)
+      /* shift + tab */
+      {
+        if ($(':focus').is(firstFocusableEl)) {
+          lastFocusableEl.focus();
+          focusParams.event.preventDefault();
+        }
+      } else
+      /* tab */
+      {
+        if ($(':focus').is(lastFocusableEl)) {
+          // eslint-disable-line
+          firstFocusableEl.focus();
+          focusParams.event.preventDefault();
+        }
+      }
+  }
+};
+
+/***/ }),
+
 /***/ "./cartridges/app_storefront_base/cartridge/client/default/js/components/footer.js":
 /*!*****************************************************************************************!*\
   !*** ./cartridges/app_storefront_base/cartridge/client/default/js/components/footer.js ***!
@@ -1064,11 +1207,60 @@ module.exports = function () {
 "use strict";
 
 
+var scrollAnimate = __webpack_require__(/*! ./scrollAnimate */ "./cartridges/app_storefront_base/cartridge/client/default/js/components/scrollAnimate.js");
+/**
+ * appends params to a url
+ * @param {string} data - data returned from the server's ajax call
+ * @param {Object} button - button that was clicked for email sign-up
+ */
+
+
+function displayMessage(data, button) {
+  $.spinner().stop();
+  var status;
+
+  if (data.success) {
+    status = 'alert-success';
+  } else {
+    status = 'alert-danger';
+  }
+
+  if ($('.email-signup-message').length === 0) {
+    $('body').append('<div class="email-signup-message"></div>');
+  }
+
+  $('.email-signup-message').append('<div class="email-signup-alert text-center ' + status + '">' + data.msg + '</div>');
+  setTimeout(function () {
+    $('.email-signup-message').remove();
+    button.removeAttr('disabled');
+  }, 3000);
+}
+
 module.exports = function () {
   $('.back-to-top').click(function () {
-    $('html, body').animate({
-      scrollTop: 0
-    }, 500);
+    scrollAnimate();
+  });
+  $('.subscribe-email').on('click', function (e) {
+    e.preventDefault();
+    var url = $(this).data('href');
+    var button = $(this);
+    var emailId = $('input[name=hpEmailSignUp]').val();
+    $.spinner().start();
+    $(this).attr('disabled', true);
+    $.ajax({
+      url: url,
+      type: 'post',
+      dataType: 'json',
+      data: {
+        emailId: emailId
+      },
+      success: function success(data) {
+        displayMessage(data, button);
+      },
+      error: function error(err) {
+        displayMessage(err, button);
+      }
+    });
   });
 };
 
@@ -1118,7 +1310,9 @@ var keyboardAccessibility = __webpack_require__(/*! ./keyboardAccessibility */ "
 var clearSelection = function clearSelection(element) {
   $(element).closest('.dropdown').children('.dropdown-menu').children('.top-category').detach();
   $(element).closest('.dropdown.show').children('.nav-link').attr('aria-expanded', 'false');
+  $(element).closest('.dropdown.show').children('.dropdown-menu').attr('aria-hidden', 'true');
   $(element).closest('.dropdown.show').removeClass('show');
+  $('div.menu-group > ul.nav.navbar-nav > li.nav-item > a').attr('aria-hidden', 'false');
   $(element).closest('li').detach();
 };
 
@@ -1127,9 +1321,16 @@ module.exports = function () {
     return $(element).parents('.menu-toggleable-left').css('position') !== 'fixed';
   };
 
+  var headerBannerStatus = window.sessionStorage.getItem('hide_header_banner');
   $('.header-banner .close').on('click', function () {
-    $('.header-banner').addClass('hide');
+    $('.header-banner').addClass('d-none');
+    window.sessionStorage.setItem('hide_header_banner', '1');
   });
+
+  if (!headerBannerStatus || headerBannerStatus < 0) {
+    $('.header-banner').removeClass('d-none');
+  }
+
   keyboardAccessibility('.main-menu .nav-link, .main-menu .dropdown-link', {
     40: function _(menuItem) {
       // down
@@ -1137,12 +1338,17 @@ module.exports = function () {
         // top level
         $('.navbar-nav .show').removeClass('show').children('.dropdown-menu').removeClass('show');
         menuItem.addClass('show').children('.dropdown-menu').addClass('show');
-        $(this).attr('aria-expanded', 'true');
         menuItem.find('ul > li > a').first().focus();
       } else {
         menuItem.removeClass('show').children('.dropdown-menu').removeClass('show');
-        $(this).attr('aria-expanded', 'false');
-        menuItem.next().children().first().focus();
+
+        if (!(menuItem.next().length > 0)) {
+          // if this is the last menuItem
+          menuItem.parent().parent().find('li > a') // set focus to the first menuitem
+          .first().focus();
+        } else {
+          menuItem.next().children().first().focus();
+        }
       }
     },
     39: function _(menuItem) {
@@ -1163,10 +1369,11 @@ module.exports = function () {
       if (menuItem.hasClass('nav-item')) {
         // top level
         menuItem.removeClass('show').children('.dropdown-menu').removeClass('show');
-        $(this).attr('aria-expanded', 'false');
       } else if (menuItem.prev().length === 0) {
+        // first menuItem
         menuItem.parent().parent().removeClass('show').children('.nav-link').attr('aria-expanded', 'false');
-        menuItem.parent().parent().children().first().focus();
+        menuItem.parent().children().last().children() // set the focus to the last menuItem
+        .first().focus();
       } else {
         menuItem.prev().children().first().focus();
       }
@@ -1201,10 +1408,12 @@ module.exports = function () {
       li.append(link);
       var closeMenu = $('<li class="nav-menu"></li>');
       closeMenu.append($('.close-menu').first().clone());
-      $(this).parent().children('.dropdown-menu').prepend(li).prepend(closeMenu); // copy navigation menu into view
+      $(this).parent().children('.dropdown-menu').prepend(li).prepend(closeMenu).attr('aria-hidden', 'false'); // copy navigation menu into view
 
       $(this).parent().addClass('show');
       $(this).attr('aria-expanded', 'true');
+      $(link).focus();
+      $('div.menu-group > ul.nav.navbar-nav > li.nav-item > a').attr('aria-hidden', 'true');
       e.preventDefault();
     }
   }).on('mouseenter', function () {
@@ -1239,6 +1448,10 @@ module.exports = function () {
     e.preventDefault();
     $('.menu-toggleable-left').removeClass('in');
     $('.modal-background').hide();
+    $('.navbar-toggler').focus();
+    $('.main-menu').attr('aria-hidden', 'true');
+    $('.main-menu').siblings().attr('aria-hidden', 'false');
+    $('header').siblings().attr('aria-hidden', 'false');
   });
   $('.navbar-nav').on('click', '.back', function (e) {
     e.preventDefault();
@@ -1250,18 +1463,25 @@ module.exports = function () {
     $('.navbar-nav').find('.nav-menu').detach();
     $('.navbar-nav').find('.show').removeClass('show');
     $('.menu-toggleable-left').removeClass('in');
+    $('.main-menu').siblings().attr('aria-hidden', 'false');
+    $('header').siblings().attr('aria-hidden', 'false');
     $('.modal-background').hide();
   });
   $('.navbar-toggler').click(function (e) {
     e.preventDefault();
     $('.main-menu').toggleClass('in');
     $('.modal-background').show();
+    $('.main-menu').removeClass('d-none');
+    $('.main-menu').attr('aria-hidden', 'false');
+    $('.main-menu').siblings().attr('aria-hidden', 'true');
+    $('header').siblings().attr('aria-hidden', 'true');
+    $('.main-menu .nav.navbar-nav .nav-link').first().focus();
   });
   keyboardAccessibility('.navbar-header .user', {
     40: function _($popover) {
       // down
       if ($popover.children('a').first().is(':focus')) {
-        $popover.children('a').first().next().focus();
+        $popover.next().children().first().focus();
       } else {
         $popover.children('a').first().focus();
       }
@@ -1275,31 +1495,32 @@ module.exports = function () {
         $popover.children('a').first().focus();
       }
     },
-    27: function _($popover) {
+    27: function _() {
       // escape
-      $(this).focus();
-      $popover.removeClass('show');
+      $('.navbar-header .user .popover').removeClass('show');
+      $('.user').attr('aria-expanded', 'false');
     },
-    9: function _($popover) {
+    9: function _() {
       // tab
-      $popover.removeClass('show');
+      $('.navbar-header .user .popover').removeClass('show');
+      $('.user').attr('aria-expanded', 'false');
     }
   }, function () {
-    var $popover = $('.user .popover');
-
-    if (!$popover.hasClass('show')) {
-      $popover.addClass('show');
-    }
-
+    var $popover = $('.user .popover li.nav-item');
     return $popover;
   });
   $('.navbar-header .user').on('mouseenter focusin', function () {
     if ($('.navbar-header .user .popover').length > 0) {
       $('.navbar-header .user .popover').addClass('show');
+      $('.user').attr('aria-expanded', 'true');
     }
   });
   $('.navbar-header .user').on('mouseleave', function () {
     $('.navbar-header .user .popover').removeClass('show');
+    $('.user').attr('aria-expanded', 'false');
+  });
+  $('body').on('click', '#myaccount', function () {
+    event.preventDefault();
   });
 };
 
@@ -1317,11 +1538,17 @@ module.exports = function () {
 
 var cart = __webpack_require__(/*! ../cart/cart */ "./cartridges/app_storefront_base/cartridge/client/default/js/cart/cart.js");
 
+var updateMiniCart = true;
+
 module.exports = function () {
   cart();
   $('.minicart').on('count:update', function (event, count) {
     if (count && $.isNumeric(count.quantityTotal)) {
       $('.minicart .minicart-quantity').text(count.quantityTotal);
+      $('.minicart .minicart-link').attr({
+        'aria-label': count.minicartCountOfItems,
+        title: count.minicartCountOfItems
+      });
     }
   });
   $('.minicart').on('mouseenter focusin touchstart', function () {
@@ -1333,18 +1560,23 @@ module.exports = function () {
     var count = parseInt($('.minicart .minicart-quantity').text(), 10);
 
     if (count !== 0 && $('.minicart .popover.show').length === 0) {
+      if (!updateMiniCart) {
+        $('.minicart .popover').addClass('show');
+        return;
+      }
+
       $('.minicart .popover').addClass('show');
       $('.minicart .popover').spinner().start();
       $.get(url, function (data) {
         $('.minicart .popover').empty();
         $('.minicart .popover').append(data);
+        updateMiniCart = false;
         $.spinner().stop();
       });
     }
   });
   $('body').on('touchstart click', function (e) {
     if ($('.minicart').has(e.target).length <= 0) {
-      $('.minicart .popover').empty();
       $('.minicart .popover').removeClass('show');
     }
   });
@@ -1354,7 +1586,6 @@ module.exports = function () {
       return;
     }
 
-    $('.minicart .popover').empty();
     $('.minicart .popover').removeClass('show');
   });
   $('body').on('change', '.minicart .quantity', function () {
@@ -1362,6 +1593,35 @@ module.exports = function () {
       location.reload();
     }
   });
+  $('body').on('product:afterAddToCart', function () {
+    updateMiniCart = true;
+  });
+  $('body').on('cart:update', function () {
+    updateMiniCart = true;
+  });
+};
+
+/***/ }),
+
+/***/ "./cartridges/app_storefront_base/cartridge/client/default/js/components/scrollAnimate.js":
+/*!************************************************************************************************!*\
+  !*** ./cartridges/app_storefront_base/cartridge/client/default/js/components/scrollAnimate.js ***!
+  \************************************************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+module.exports = function (element) {
+  var position = element && element.length ? element.offset().top : 0;
+  $('html, body').animate({
+    scrollTop: position
+  }, 500);
+
+  if (!element) {
+    $('.logo-home').focus();
+  }
 };
 
 /***/ }),
@@ -1382,6 +1642,10 @@ var debounce = __webpack_require__(/*! lodash/debounce */ "./node_modules/lodash
 
 var endpoint = $('.suggestions-wrapper').data('url');
 var minChars = 3;
+var UP_KEY = 38;
+var DOWN_KEY = 40;
+var DIRECTION_DOWN = 1;
+var DIRECTION_UP = -1;
 /**
  * Retrieves Suggestions element relative to scope
  *
@@ -1411,6 +1675,7 @@ function isMobileSearch(scope) {
 
 function clearModals() {
   $('body').removeClass('modal-open');
+  $('header').siblings().attr('aria-hidden', 'false');
   $('.suggestions').removeClass('modal');
 }
 /**
@@ -1423,6 +1688,7 @@ function clearModals() {
 function applyModals(scope) {
   if (isMobileSearch(scope)) {
     $('body').addClass('modal-open');
+    $('header').siblings().attr('aria-hidden', 'true');
     getSuggestionsWrapper(scope).find('.suggestions').addClass('modal');
   }
 }
@@ -1445,14 +1711,14 @@ function tearDownSuggestions() {
 
 
 function toggleSuggestionsIcon(action) {
-  var mobileSearchIcon = '.search-mobile span.';
+  var mobileSearchIcon = '.search-mobile button.';
   var iconSearch = 'fa-search';
   var iconSearchClose = 'fa-close';
 
   if (action === 'close') {
-    $(mobileSearchIcon + iconSearch).removeClass(iconSearch).addClass(iconSearchClose);
+    $(mobileSearchIcon + iconSearch).removeClass(iconSearch).addClass(iconSearchClose).attr('type', 'button');
   } else {
-    $(mobileSearchIcon + iconSearchClose).removeClass(iconSearchClose).addClass(iconSearch);
+    $(mobileSearchIcon + iconSearchClose).removeClass(iconSearchClose).addClass(iconSearch).attr('type', 'submit');
   }
 }
 /**
@@ -1510,11 +1776,21 @@ function processResponse(response) {
 
   if (!(_typeof(response) === 'object')) {
     $suggestionsWrapper.append(response).show();
+    $(this).siblings('.reset-button').addClass('d-sm-block');
     positionSuggestions(this);
 
     if (isMobileSearch(this)) {
       toggleSuggestionsIcon('close');
       applyModals(this);
+    } // Trigger screen reader by setting aria-describedby with the new suggestion message.
+
+
+    var suggestionsList = $('.suggestions .item');
+
+    if ($(suggestionsList).length) {
+      $('input.search-field').attr('aria-describedby', 'search-result-count');
+    } else {
+      $('input.search-field').removeAttr('aria-describedby');
     }
   } else {
     $suggestionsWrapper.hide();
@@ -1541,12 +1817,67 @@ function getSuggestions(scope) {
     });
   } else {
     toggleSuggestionsIcon('search');
+    $(scope).siblings('.reset-button').removeClass('d-sm-block');
     clearModals();
     getSuggestionsWrapper(scope).empty();
   }
 }
+/**
+ * Handle Search Suggestion Keyboard Arrow Keys
+ *
+ * @param {Integer} direction takes positive or negative number constant, DIRECTION_UP (-1) or DIRECTION_DOWN (+1)
+ */
+
+
+function handleArrow(direction) {
+  // get all li elements in the suggestions list
+  var suggestionsList = $('.suggestions .item');
+
+  if (suggestionsList.filter('.selected').length === 0) {
+    suggestionsList.first().addClass('selected');
+    $('input.search-field').each(function () {
+      $(this).attr('aria-activedescendant', suggestionsList.first()[0].id);
+    });
+  } else {
+    suggestionsList.each(function (index) {
+      var idx = index + direction;
+
+      if ($(this).hasClass('selected')) {
+        $(this).removeClass('selected');
+        $(this).removeAttr('aria-selected');
+
+        if (suggestionsList.eq(idx).length !== 0) {
+          suggestionsList.eq(idx).addClass('selected');
+          suggestionsList.eq(idx).attr('aria-selected', true);
+          $(this).removeProp('aria-selected');
+          $('input.search-field').each(function () {
+            $(this).attr('aria-activedescendant', suggestionsList.eq(idx)[0].id);
+          });
+        } else {
+          suggestionsList.first().addClass('selected');
+          suggestionsList.first().attr('aria-selected', true);
+          $('input.search-field').each(function () {
+            $(this).attr('aria-activedescendant', suggestionsList.first()[0].id);
+          });
+        }
+
+        return false;
+      }
+
+      return true;
+    });
+  }
+}
 
 module.exports = function () {
+  $('form[name="simpleSearch"]').submit(function (e) {
+    var suggestionsList = $('.suggestions .item');
+
+    if (suggestionsList.filter('.selected').length !== 0) {
+      e.preventDefault();
+      suggestionsList.filter('.selected').find('a')[0].click();
+    }
+  });
   $('input.search-field').each(function () {
     /**
      * Use debounce to avoid making an Ajax call on every single key press by waiting a few
@@ -1554,8 +1885,24 @@ module.exports = function () {
      * browser blink with every key press.
      */
     var debounceSuggestions = debounce(getSuggestions, 300);
-    $(this).on('keyup click', function (e) {
-      debounceSuggestions(this, e);
+    $(this).on('keyup focus', function (e) {
+      // Capture Down/Up Arrow Key Events
+      switch (e.which) {
+        case DOWN_KEY:
+          handleArrow(DIRECTION_DOWN);
+          e.preventDefault(); // prevent moving the cursor
+
+          break;
+
+        case UP_KEY:
+          handleArrow(DIRECTION_UP);
+          e.preventDefault(); // prevent moving the cursor
+
+          break;
+
+        default:
+          debounceSuggestions(this, e);
+      }
     });
   });
   $('body').on('click', function (e) {
@@ -1563,10 +1910,14 @@ module.exports = function () {
       $('.suggestions').hide();
     }
   });
-  $('body').on('click touchend', '.search-mobile span.fa-close', function () {
+  $('body').on('click touchend', '.search-mobile button.fa-close', function (e) {
+    e.preventDefault();
     $('.suggestions').hide();
     toggleSuggestionsIcon('search');
     tearDownSuggestions();
+  });
+  $('.site-search .reset-button').on('click', function () {
+    $(this).removeClass('d-sm-block');
   });
 };
 
@@ -1673,15 +2024,33 @@ $.spinner = function () {
 
 /***/ }),
 
+/***/ "./cartridges/app_storefront_base/cartridge/client/default/js/components/toolTip.js":
+/*!******************************************************************************************!*\
+  !*** ./cartridges/app_storefront_base/cartridge/client/default/js/components/toolTip.js ***!
+  \******************************************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+module.exports = function () {
+  $('.info-icon').on('mouseenter focusin', function () {
+    $(this).find('.tooltip').removeClass('d-none');
+  });
+  $('.info-icon').on('mouseleave focusout', function () {
+    $(this).find('.tooltip').addClass('d-none');
+  });
+};
+
+/***/ }),
+
 /***/ "./cartridges/app_storefront_base/cartridge/client/default/js/main.js":
 /*!****************************************************************************!*\
   !*** ./cartridges/app_storefront_base/cartridge/client/default/js/main.js ***!
   \****************************************************************************/
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
 
 window.jQuery = window.$ = __webpack_require__(/*! jquery */ "./node_modules/jquery/dist/jquery.js");
 
@@ -1697,6 +2066,7 @@ $(document).ready(function () {
   processInclude(__webpack_require__(/*! ./components/search */ "./cartridges/app_storefront_base/cartridge/client/default/js/components/search.js"));
   processInclude(__webpack_require__(/*! ./components/clientSideValidation */ "./cartridges/app_storefront_base/cartridge/client/default/js/components/clientSideValidation.js"));
   processInclude(__webpack_require__(/*! ./components/countrySelector */ "./cartridges/app_storefront_base/cartridge/client/default/js/components/countrySelector.js"));
+  processInclude(__webpack_require__(/*! ./components/toolTip */ "./cartridges/app_storefront_base/cartridge/client/default/js/components/toolTip.js"));
 });
 
 __webpack_require__(/*! ./thirdParty/bootstrap */ "./cartridges/app_storefront_base/cartridge/client/default/js/thirdParty/bootstrap.js");
@@ -1714,11 +2084,14 @@ __webpack_require__(/*! ./components/spinner */ "./cartridges/app_storefront_bas
 
 "use strict";
 
+
+var focusHelper = __webpack_require__(/*! ../components/focus */ "./cartridges/app_storefront_base/cartridge/client/default/js/components/focus.js");
 /**
  * Retrieves the relevant pid value
  * @param {jquery} $el - DOM container for a given add to cart button
  * @return {string} - value to be used when adding product to cart
  */
+
 
 function getPidValue($el) {
   var pid;
@@ -1765,24 +2138,27 @@ function getQuantitySelected($el) {
  *     selected.  If there is no variant that corresponds to a specific combination of attribute
  *     values, an attribute may be disabled in the Product Detail Page
  * @param {jQuery} $productContainer - DOM container for a given product
+ * @param {Object} msgs - object containing resource messages
  */
 
 
-function processSwatchValues(attr, $productContainer) {
+function processSwatchValues(attr, $productContainer, msgs) {
   attr.values.forEach(function (attrValue) {
     var $attrValue = $productContainer.find('[data-attr="' + attr.id + '"] [data-attr-value="' + attrValue.value + '"]');
-    var $swatchAnchor = $attrValue.parent();
+    var $swatchButton = $attrValue.parent();
 
     if (attrValue.selected) {
       $attrValue.addClass('selected');
+      $attrValue.siblings('.selected-assistive-text').text(msgs.assistiveSelectedText);
     } else {
       $attrValue.removeClass('selected');
+      $attrValue.siblings('.selected-assistive-text').empty();
     }
 
     if (attrValue.url) {
-      $swatchAnchor.attr('href', attrValue.url);
+      $swatchButton.attr('data-url', attrValue.url);
     } else {
-      $swatchAnchor.removeAttr('href');
+      $swatchButton.removeAttr('data-url');
     } // Disable if not selectable
 
 
@@ -1825,15 +2201,16 @@ function processNonSwatchValues(attr, $productContainer) {
  * @param {Object} attrs - Attribute
  * @param {string} attr.id - Attribute ID
  * @param {jQuery} $productContainer - DOM element for a given product
+ * @param {Object} msgs - object containing resource messages
  */
 
 
-function updateAttrs(attrs, $productContainer) {
+function updateAttrs(attrs, $productContainer, msgs) {
   // Currently, the only attribute type that has image swatches is Color.
   var attrsWithSwatches = ['color'];
   attrs.forEach(function (attr) {
     if (attrsWithSwatches.indexOf(attr.id) > -1) {
-      processSwatchValues(attr, $productContainer);
+      processSwatchValues(attr, $productContainer, msgs);
     } else {
       processNonSwatchValues(attr, $productContainer);
     }
@@ -1853,10 +2230,10 @@ function updateAvailability(response, $productContainer) {
   var availabilityMessages = response.product.availability.messages;
 
   if (!response.product.readyToOrder) {
-    availabilityValue = '<div>' + response.resources.info_selectforstock + '</div>';
+    availabilityValue = '<li><div>' + response.resources.info_selectforstock + '</div></li>';
   } else {
     availabilityMessages.forEach(function (message) {
-      availabilityValue += '<div>' + message + '</div>';
+      availabilityValue += '<li><div>' + message + '</div></li>';
     });
   }
 
@@ -1866,25 +2243,6 @@ function updateAvailability(response, $productContainer) {
     message: availabilityValue,
     resources: response.resources
   });
-}
-/**
- * Generates html for promotions section
- *
- * @param {array} promotions - list of promotions
- * @return {string} - Compiled HTML
- */
-
-
-function getPromotionsHtml(promotions) {
-  if (!promotions) {
-    return '';
-  }
-
-  var html = '';
-  promotions.forEach(function (promotion) {
-    html += '<div class="callout" title="' + promotion.details + '">' + promotion.calloutMsg + '</div>';
-  });
-  return html;
 }
 /**
  * Generates html for product attributes section
@@ -1928,19 +2286,42 @@ function getAttributesHtml(attributes) {
 /**
  * Updates DOM using post-option selection Ajax response
  *
- * @param {OptionSelectionResponse} options - Ajax response options from selecting a product option
+ * @param {OptionSelectionResponse} optionsHtml - Ajax response optionsHtml from selecting a product option
  * @param {jQuery} $productContainer - DOM element for current product
  */
 
 
-function updateOptions(options, $productContainer) {
-  options.forEach(function (option) {
-    var $optionEl = $productContainer.find('.product-option[data-option-id*="' + option.id + '"]');
-    option.values.forEach(function (value) {
-      var valueEl = $optionEl.find('option[data-value-id*="' + value.id + '"]');
-      valueEl.val(value.url);
-    });
-  });
+function updateOptions(optionsHtml, $productContainer) {
+  // Update options
+  $productContainer.find('.product-options').empty().html(optionsHtml);
+}
+/**
+ * Dynamically creates Bootstrap carousel from response containing images
+ * @param {Object[]} imgs - Array of large product images,along with related information
+ * @param {jQuery} $productContainer - DOM element for a given product
+ */
+
+
+function createCarousel(imgs, $productContainer) {
+  var carousel = $productContainer.find('.carousel');
+  $(carousel).carousel('dispose');
+  var carouselId = $(carousel).attr('id');
+  $(carousel).empty().append('<ol class="carousel-indicators"></ol><div class="carousel-inner" role="listbox"></div><a class="carousel-control-prev" href="#' + carouselId + '" role="button" data-slide="prev"><span class="fa icon-prev" aria-hidden="true"></span><span class="sr-only">' + $(carousel).data('prev') + '</span></a><a class="carousel-control-next" href="#' + carouselId + '" role="button" data-slide="next"><span class="fa icon-next" aria-hidden="true"></span><span class="sr-only">' + $(carousel).data('next') + '</span></a>');
+
+  for (var i = 0; i < imgs.length; i++) {
+    $('<div class="carousel-item"><img src="' + imgs[i].url + '" class="d-block img-fluid" alt="' + imgs[i].alt + ' image number ' + parseInt(imgs[i].index, 10) + '" title="' + imgs[i].title + '" itemprop="image" /></div>').appendTo($(carousel).find('.carousel-inner'));
+    $('<li data-target="#' + carouselId + '" data-slide-to="' + i + '" class=""></li>').appendTo($(carousel).find('.carousel-indicators'));
+  }
+
+  $($(carousel).find('.carousel-item')).first().addClass('active');
+  $($(carousel).find('.carousel-indicators > li')).first().addClass('active');
+
+  if (imgs.length === 1) {
+    $($(carousel).find('.carousel-indicators, a[class^="carousel-control-"]')).detach();
+  }
+
+  $(carousel).carousel();
+  $($(carousel).find('.carousel-indicators')).attr('aria-hidden', true);
 }
 /**
  * Parses JSON from Ajax call made whenever an attribute value is [de]selected
@@ -1961,7 +2342,7 @@ function handleVariantResponse(response, $productContainer) {
   var isVaraint;
 
   if (response.product.variationAttributes) {
-    updateAttrs(response.product.variationAttributes, $productContainer);
+    updateAttrs(response.product.variationAttributes, $productContainer, response.resources);
     isVaraint = response.product.productType === 'variant';
 
     if (isChoiceOfBonusProducts && isVaraint) {
@@ -1971,10 +2352,8 @@ function handleVariantResponse(response, $productContainer) {
   } // Update primary images
 
 
-  var primaryImageUrls = response.product.images;
-  primaryImageUrls.large.forEach(function (imageUrl, idx) {
-    $productContainer.find('.primary-images').find('img').eq(idx).attr('src', imageUrl.url);
-  }); // Update pricing
+  var primaryImageUrls = response.product.images.large;
+  createCarousel(primaryImageUrls, $productContainer); // Update pricing
 
   if (!isChoiceOfBonusProducts) {
     var $priceSelector = $('.prices .price', $productContainer).length ? $('.prices .price', $productContainer) : $('.prices .price');
@@ -1982,7 +2361,7 @@ function handleVariantResponse(response, $productContainer) {
   } // Update promotions
 
 
-  $('.promotions').empty().html(getPromotionsHtml(response.product.promotions));
+  $productContainer.find('.promotions').empty().html(response.product.promotionsHtml);
   updateAvailability(response, $productContainer);
 
   if (isChoiceOfBonusProducts) {
@@ -2046,7 +2425,7 @@ function attributeSelect(selectedValueUrl, $productContainer) {
       method: 'GET',
       success: function success(data) {
         handleVariantResponse(data, $productContainer);
-        updateOptions(data.product.options, $productContainer);
+        updateOptions(data.product.optionsHtml, $productContainer);
         updateQuantities(data.product.quantities, $productContainer);
         $('body').trigger('product:afterAttributeSelect', {
           data: data,
@@ -2109,16 +2488,18 @@ function chooseBonusProducts(data) {
     bonusUrl = data.showProductsUrlListBased;
   }
 
-  var htmlString = '<!-- Modal -->' + '<div class="modal fade" id="chooseBonusProductModal" role="dialog">' + '<div class="modal-dialog choose-bonus-product-dialog" ' + 'data-total-qty="' + data.maxBonusItems + '"' + 'data-UUID="' + data.uuid + '"' + 'data-pliUUID="' + data.pliUUID + '"' + 'data-addToCartUrl="' + data.addToCartUrl + '"' + 'data-pageStart="0"' + 'data-pageSize="' + data.pageSize + '"' + 'data-moreURL="' + data.showProductsUrlRuleBased + '"' + 'data-bonusChoiceRuleBased="' + data.bonusChoiceRuleBased + '">' + '<!-- Modal content-->' + '<div class="modal-content">' + '<div class="modal-header">' + '    <span class="">' + data.labels.selectprods + '</span>' + '    <button type="button" class="close pull-right" data-dismiss="modal">&times;</button>' + '</div>' + '<div class="modal-body"></div>' + '<div class="modal-footer"></div>' + '</div>' + '</div>' + '</div>';
+  var htmlString = '<!-- Modal -->' + '<div class="modal fade" id="chooseBonusProductModal" tabindex="-1" role="dialog">' + '<span class="enter-message sr-only" ></span>' + '<div class="modal-dialog choose-bonus-product-dialog" ' + 'data-total-qty="' + data.maxBonusItems + '"' + 'data-UUID="' + data.uuid + '"' + 'data-pliUUID="' + data.pliUUID + '"' + 'data-addToCartUrl="' + data.addToCartUrl + '"' + 'data-pageStart="0"' + 'data-pageSize="' + data.pageSize + '"' + 'data-moreURL="' + data.showProductsUrlRuleBased + '"' + 'data-bonusChoiceRuleBased="' + data.bonusChoiceRuleBased + '">' + '<!-- Modal content-->' + '<div class="modal-content">' + '<div class="modal-header">' + '    <span class="">' + data.labels.selectprods + '</span>' + '    <button type="button" class="close pull-right" data-dismiss="modal">' + '        <span aria-hidden="true">&times;</span>' + '        <span class="sr-only"> </span>' + '    </button>' + '</div>' + '<div class="modal-body"></div>' + '<div class="modal-footer"></div>' + '</div>' + '</div>' + '</div>';
   $('body').append(htmlString);
   $('.modal-body').spinner().start();
   $.ajax({
     url: bonusUrl,
     method: 'GET',
-    dataType: 'html',
-    success: function success(html) {
-      var parsedHtml = parseHtml(html);
+    dataType: 'json',
+    success: function success(response) {
+      var parsedHtml = parseHtml(response.renderedTemplate);
       $('#chooseBonusProductModal .modal-body').empty();
+      $('#chooseBonusProductModal .enter-message').text(response.enterDialogMessage);
+      $('#chooseBonusProductModal .modal-header .close .sr-only').text(response.closeButtonText);
       $('#chooseBonusProductModal .modal-body').html(parsedHtml.body);
       $('#chooseBonusProductModal .modal-footer').html(parsedHtml.footer);
       $('#chooseBonusProductModal').modal('show');
@@ -2190,6 +2571,25 @@ function getOptions($productContainer) {
   }).toArray();
   return JSON.stringify(options);
 }
+/**
+ * Makes a call to the server to report the event of adding an item to the cart
+ *
+ * @param {string | boolean} url - a string representing the end point to hit so that the event can be recorded, or false
+ */
+
+
+function miniCartReportingUrl(url) {
+  if (url) {
+    $.ajax({
+      url: url,
+      method: 'GET',
+      success: function success() {// reporting urls hit on the server
+      },
+      error: function error() {// no reporting urls hit on the server
+      }
+    });
+  }
+}
 
 module.exports = {
   attributeSelect: attributeSelect,
@@ -2198,8 +2598,30 @@ module.exports = {
       chooseBonusProducts(data);
     }
   },
+  focusChooseBonusProductModal: function focusChooseBonusProductModal() {
+    $('body').on('shown.bs.modal', '#chooseBonusProductModal', function () {
+      $('#chooseBonusProductModal').siblings().attr('aria-hidden', 'true');
+      $('#chooseBonusProductModal .close').focus();
+    });
+  },
+  onClosingChooseBonusProductModal: function onClosingChooseBonusProductModal() {
+    $('body').on('hidden.bs.modal', '#chooseBonusProductModal', function () {
+      $('#chooseBonusProductModal').siblings().attr('aria-hidden', 'false');
+    });
+  },
+  trapChooseBonusProductModalFocus: function trapChooseBonusProductModalFocus() {
+    $('body').on('keydown', '#chooseBonusProductModal', function (e) {
+      var focusParams = {
+        event: e,
+        containerSelector: '#chooseBonusProductModal',
+        firstElementSelector: '.close',
+        lastElementSelector: '.add-bonus-products'
+      };
+      focusHelper.setTabNextFocus(focusParams);
+    });
+  },
   colorAttribute: function colorAttribute() {
-    $(document).on('click', '[data-attr="color"] a', function (e) {
+    $(document).on('click', '[data-attr="color"] button', function (e) {
       e.preventDefault();
 
       if ($(this).attr('disabled')) {
@@ -2212,7 +2634,7 @@ module.exports = {
         $productContainer = $(this).closest('.product-detail');
       }
 
-      attributeSelect(e.currentTarget.href, $productContainer);
+      attributeSelect($(this).attr('data-url'), $productContainer);
     });
   },
   selectAttribute: function selectAttribute() {
@@ -2293,6 +2715,7 @@ module.exports = {
             handlePostCartAdd(data);
             $('body').trigger('product:afterAddToCart', data);
             $.spinner().stop();
+            miniCartReportingUrl(data.reportingURL);
           },
           error: function error() {
             $.spinner().stop();
@@ -2306,14 +2729,14 @@ module.exports = {
       var $choiceOfBonusProduct = $(this).parents('.choice-of-bonus-product');
       var pid = $(this).data('pid');
       var maxPids = $('.choose-bonus-product-dialog').data('total-qty');
-      var submittedQty = parseInt($(this).parents('.choice-of-bonus-product').find('.bonus-quantity-select').val(), 10);
+      var submittedQty = parseInt($choiceOfBonusProduct.find('.bonus-quantity-select').val(), 10);
       var totalQty = 0;
       $.each($('#chooseBonusProductModal .selected-bonus-products .selected-pid'), function () {
         totalQty += $(this).data('qty');
       });
       totalQty += submittedQty;
-      var optionID = $(this).parents('.choice-of-bonus-product').find('.product-option').data('option-id');
-      var valueId = $(this).parents('.choice-of-bonus-product').find('.options-select option:selected').data('valueId');
+      var optionID = $choiceOfBonusProduct.find('.product-option').data('option-id');
+      var valueId = $choiceOfBonusProduct.find('.options-select option:selected').data('valueId');
 
       if (totalQty <= maxPids) {
         var selectedBonusProductHtml = '' + '<div class="selected-pid row" ' + 'data-pid="' + pid + '"' + 'data-qty="' + submittedQty + '"' + 'data-optionID="' + (optionID || '') + '"' + 'data-option-selected-value="' + (valueId || '') + '"' + '>' + '<div class="col-sm-11 col-9 bonus-product-name" >' + $choiceOfBonusProduct.find('.product-name').html() + '</div>' + '<div class="col-1"><i class="fa fa-times" aria-hidden="true"></i></div>' + '</div>';
@@ -2345,7 +2768,7 @@ module.exports = {
     $('body').on('bonusproduct:updateSelectButton', function (e, response) {
       $('button.select-bonus-product', response.$productContainer).attr('disabled', !response.product.readyToOrder || !response.product.available);
       var pid = response.product.id;
-      $('button.select-bonus-product').data('pid', pid);
+      $('button.select-bonus-product', response.$productContainer).data('pid', pid);
     });
   },
   showMoreBonusProducts: function showMoreBonusProducts() {
@@ -2406,7 +2829,16 @@ module.exports = {
           $.spinner().stop();
 
           if (data.error) {
-            $('.error-choice-of-bonus-products').html(data.errorMessage);
+            $('#chooseBonusProductModal').modal('hide');
+
+            if ($('.add-to-cart-messages').length === 0) {
+              $('body').append('<div class="add-to-cart-messages"></div>');
+            }
+
+            $('.add-to-cart-messages').append('<div class="alert alert-danger add-to-basket-alert text-center"' + ' role="alert">' + data.errorMessage + '</div>');
+            setTimeout(function () {
+              $('.add-to-basket-alert').remove();
+            }, 3000);
           } else {
             $('.configure-bonus-product-attributes').html(data);
             $('.bonus-products-step2').removeClass('hidden-xl-down');
@@ -2424,7 +2856,7 @@ module.exports = {
               if ($('.cart-page').length) {
                 location.reload();
               }
-            }, 3000);
+            }, 1500);
           }
         },
         error: function error() {
@@ -2433,7 +2865,9 @@ module.exports = {
       });
     });
   },
-  getPidValue: getPidValue
+  getPidValue: getPidValue,
+  getQuantitySelected: getQuantitySelected,
+  miniCartReportingUrl: miniCartReportingUrl
 };
 
 /***/ }),
@@ -2444,9 +2878,6 @@ module.exports = {
   \********************************************************************************************/
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
 
 __webpack_require__(/*! bootstrap/js/src/util.js */ "./node_modules/bootstrap/js/src/util.js");
 
@@ -2497,23 +2928,14 @@ module.exports = function (include) {
 /*!************************************************!*\
   !*** ./node_modules/bootstrap/js/src/alert.js ***!
   \************************************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
+/*! exports provided: default */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = void 0;
-
-var _jquery = _interopRequireDefault(__webpack_require__(/*! jquery */ "./node_modules/jquery/dist/jquery.js"));
-
-var _util = _interopRequireDefault(__webpack_require__(/*! ./util */ "./node_modules/bootstrap/js/src/util.js"));
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
+__webpack_require__.r(__webpack_exports__);
+/* harmony import */ var jquery__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! jquery */ "./node_modules/jquery/dist/jquery.js");
+/* harmony import */ var jquery__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(jquery__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _util__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./util */ "./node_modules/bootstrap/js/src/util.js");
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
 function _defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } }
@@ -2521,16 +2943,25 @@ function _defineProperties(target, props) { for (var i = 0; i < props.length; i+
 function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _defineProperties(Constructor.prototype, protoProps); if (staticProps) _defineProperties(Constructor, staticProps); return Constructor; }
 
 /**
+ * --------------------------------------------------------------------------
+ * Bootstrap (v4.4.1): alert.js
+ * Licensed under MIT (https://github.com/twbs/bootstrap/blob/master/LICENSE)
+ * --------------------------------------------------------------------------
+ */
+
+
+/**
  * ------------------------------------------------------------------------
  * Constants
  * ------------------------------------------------------------------------
  */
+
 var NAME = 'alert';
-var VERSION = '4.3.1';
+var VERSION = '4.4.1';
 var DATA_KEY = 'bs.alert';
 var EVENT_KEY = ".".concat(DATA_KEY);
 var DATA_API_KEY = '.data-api';
-var JQUERY_NO_CONFLICT = _jquery.default.fn[NAME];
+var JQUERY_NO_CONFLICT = jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME];
 var Selector = {
   DISMISS: '[data-dismiss="alert"]'
 };
@@ -2543,13 +2974,12 @@ var ClassName = {
   ALERT: 'alert',
   FADE: 'fade',
   SHOW: 'show'
-  /**
-   * ------------------------------------------------------------------------
-   * Class Definition
-   * ------------------------------------------------------------------------
-   */
-
 };
+/**
+ * ------------------------------------------------------------------------
+ * Class Definition
+ * ------------------------------------------------------------------------
+ */
 
 var Alert =
 /*#__PURE__*/
@@ -2582,16 +3012,14 @@ function () {
   }, {
     key: "dispose",
     value: function dispose() {
-      _jquery.default.removeData(this._element, DATA_KEY);
-
+      jquery__WEBPACK_IMPORTED_MODULE_0___default.a.removeData(this._element, DATA_KEY);
       this._element = null;
     } // Private
 
   }, {
     key: "_getRootElement",
     value: function _getRootElement(element) {
-      var selector = _util.default.getSelectorFromElement(element);
-
+      var selector = _util__WEBPACK_IMPORTED_MODULE_1__["default"].getSelectorFromElement(element);
       var parent = false;
 
       if (selector) {
@@ -2599,7 +3027,7 @@ function () {
       }
 
       if (!parent) {
-        parent = (0, _jquery.default)(element).closest(".".concat(ClassName.ALERT))[0];
+        parent = jquery__WEBPACK_IMPORTED_MODULE_0___default()(element).closest(".".concat(ClassName.ALERT))[0];
       }
 
       return parent;
@@ -2607,9 +3035,8 @@ function () {
   }, {
     key: "_triggerCloseEvent",
     value: function _triggerCloseEvent(element) {
-      var closeEvent = _jquery.default.Event(Event.CLOSE);
-
-      (0, _jquery.default)(element).trigger(closeEvent);
+      var closeEvent = jquery__WEBPACK_IMPORTED_MODULE_0___default.a.Event(Event.CLOSE);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(element).trigger(closeEvent);
       return closeEvent;
     }
   }, {
@@ -2617,31 +3044,30 @@ function () {
     value: function _removeElement(element) {
       var _this = this;
 
-      (0, _jquery.default)(element).removeClass(ClassName.SHOW);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(element).removeClass(ClassName.SHOW);
 
-      if (!(0, _jquery.default)(element).hasClass(ClassName.FADE)) {
+      if (!jquery__WEBPACK_IMPORTED_MODULE_0___default()(element).hasClass(ClassName.FADE)) {
         this._destroyElement(element);
 
         return;
       }
 
-      var transitionDuration = _util.default.getTransitionDurationFromElement(element);
-
-      (0, _jquery.default)(element).one(_util.default.TRANSITION_END, function (event) {
+      var transitionDuration = _util__WEBPACK_IMPORTED_MODULE_1__["default"].getTransitionDurationFromElement(element);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(element).one(_util__WEBPACK_IMPORTED_MODULE_1__["default"].TRANSITION_END, function (event) {
         return _this._destroyElement(element, event);
       }).emulateTransitionEnd(transitionDuration);
     }
   }, {
     key: "_destroyElement",
     value: function _destroyElement(element) {
-      (0, _jquery.default)(element).detach().trigger(Event.CLOSED).remove();
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(element).detach().trigger(Event.CLOSED).remove();
     } // Static
 
   }], [{
     key: "_jQueryInterface",
     value: function _jQueryInterface(config) {
       return this.each(function () {
-        var $element = (0, _jquery.default)(this);
+        var $element = jquery__WEBPACK_IMPORTED_MODULE_0___default()(this);
         var data = $element.data(DATA_KEY);
 
         if (!data) {
@@ -2681,23 +3107,22 @@ function () {
  */
 
 
-(0, _jquery.default)(document).on(Event.CLICK_DATA_API, Selector.DISMISS, Alert._handleDismiss(new Alert()));
+jquery__WEBPACK_IMPORTED_MODULE_0___default()(document).on(Event.CLICK_DATA_API, Selector.DISMISS, Alert._handleDismiss(new Alert()));
 /**
  * ------------------------------------------------------------------------
  * jQuery
  * ------------------------------------------------------------------------
  */
 
-_jquery.default.fn[NAME] = Alert._jQueryInterface;
-_jquery.default.fn[NAME].Constructor = Alert;
+jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME] = Alert._jQueryInterface;
+jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME].Constructor = Alert;
 
-_jquery.default.fn[NAME].noConflict = function () {
-  _jquery.default.fn[NAME] = JQUERY_NO_CONFLICT;
+jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME].noConflict = function () {
+  jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME] = JQUERY_NO_CONFLICT;
   return Alert._jQueryInterface;
 };
 
-var _default = Alert;
-exports.default = _default;
+/* harmony default export */ __webpack_exports__["default"] = (Alert);
 
 /***/ }),
 
@@ -2705,26 +3130,19 @@ exports.default = _default;
 /*!***************************************************!*\
   !*** ./node_modules/bootstrap/js/src/carousel.js ***!
   \***************************************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
+/*! exports provided: default */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = void 0;
-
-var _jquery = _interopRequireDefault(__webpack_require__(/*! jquery */ "./node_modules/jquery/dist/jquery.js"));
-
-var _util = _interopRequireDefault(__webpack_require__(/*! ./util */ "./node_modules/bootstrap/js/src/util.js"));
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
+__webpack_require__.r(__webpack_exports__);
+/* harmony import */ var jquery__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! jquery */ "./node_modules/jquery/dist/jquery.js");
+/* harmony import */ var jquery__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(jquery__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _util__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./util */ "./node_modules/bootstrap/js/src/util.js");
 function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof = function _typeof(obj) { return typeof obj; }; } else { _typeof = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof(obj); }
 
-function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i] != null ? arguments[i] : {}; var ownKeys = Object.keys(source); if (typeof Object.getOwnPropertySymbols === 'function') { ownKeys = ownKeys.concat(Object.getOwnPropertySymbols(source).filter(function (sym) { return Object.getOwnPropertyDescriptor(source, sym).enumerable; })); } ownKeys.forEach(function (key) { _defineProperty(target, key, source[key]); }); } return target; }
+function ownKeys(object, enumerableOnly) { var keys = Object.keys(object); if (Object.getOwnPropertySymbols) { var symbols = Object.getOwnPropertySymbols(object); if (enumerableOnly) symbols = symbols.filter(function (sym) { return Object.getOwnPropertyDescriptor(object, sym).enumerable; }); keys.push.apply(keys, symbols); } return keys; }
+
+function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i] != null ? arguments[i] : {}; if (i % 2) { ownKeys(Object(source), true).forEach(function (key) { _defineProperty(target, key, source[key]); }); } else if (Object.getOwnPropertyDescriptors) { Object.defineProperties(target, Object.getOwnPropertyDescriptors(source)); } else { ownKeys(Object(source)).forEach(function (key) { Object.defineProperty(target, key, Object.getOwnPropertyDescriptor(source, key)); }); } } return target; }
 
 function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
 
@@ -2735,16 +3153,25 @@ function _defineProperties(target, props) { for (var i = 0; i < props.length; i+
 function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _defineProperties(Constructor.prototype, protoProps); if (staticProps) _defineProperties(Constructor, staticProps); return Constructor; }
 
 /**
+ * --------------------------------------------------------------------------
+ * Bootstrap (v4.4.1): carousel.js
+ * Licensed under MIT (https://github.com/twbs/bootstrap/blob/master/LICENSE)
+ * --------------------------------------------------------------------------
+ */
+
+
+/**
  * ------------------------------------------------------------------------
  * Constants
  * ------------------------------------------------------------------------
  */
+
 var NAME = 'carousel';
-var VERSION = '4.3.1';
+var VERSION = '4.4.1';
 var DATA_KEY = 'bs.carousel';
 var EVENT_KEY = ".".concat(DATA_KEY);
 var DATA_API_KEY = '.data-api';
-var JQUERY_NO_CONFLICT = _jquery.default.fn[NAME];
+var JQUERY_NO_CONFLICT = jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME];
 var ARROW_LEFT_KEYCODE = 37; // KeyboardEvent.which value for left arrow key
 
 var ARROW_RIGHT_KEYCODE = 39; // KeyboardEvent.which value for right arrow key
@@ -2813,13 +3240,12 @@ var Selector = {
 var PointerType = {
   TOUCH: 'touch',
   PEN: 'pen'
-  /**
-   * ------------------------------------------------------------------------
-   * Class Definition
-   * ------------------------------------------------------------------------
-   */
-
 };
+/**
+ * ------------------------------------------------------------------------
+ * Class Definition
+ * ------------------------------------------------------------------------
+ */
 
 var Carousel =
 /*#__PURE__*/
@@ -2858,7 +3284,7 @@ function () {
     value: function nextWhenVisible() {
       // Don't call next when the page isn't visible
       // or the carousel or its parent isn't visible
-      if (!document.hidden && (0, _jquery.default)(this._element).is(':visible') && (0, _jquery.default)(this._element).css('visibility') !== 'hidden') {
+      if (!document.hidden && jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).is(':visible') && jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).css('visibility') !== 'hidden') {
         this.next();
       }
     }
@@ -2877,8 +3303,7 @@ function () {
       }
 
       if (this._element.querySelector(Selector.NEXT_PREV)) {
-        _util.default.triggerTransitionEnd(this._element);
-
+        _util__WEBPACK_IMPORTED_MODULE_1__["default"].triggerTransitionEnd(this._element);
         this.cycle(true);
       }
 
@@ -2915,7 +3340,7 @@ function () {
       }
 
       if (this._isSliding) {
-        (0, _jquery.default)(this._element).one(Event.SLID, function () {
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).one(Event.SLID, function () {
           return _this.to(index);
         });
         return;
@@ -2934,10 +3359,8 @@ function () {
   }, {
     key: "dispose",
     value: function dispose() {
-      (0, _jquery.default)(this._element).off(EVENT_KEY);
-
-      _jquery.default.removeData(this._element, DATA_KEY);
-
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).off(EVENT_KEY);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default.a.removeData(this._element, DATA_KEY);
       this._items = null;
       this._config = null;
       this._element = null;
@@ -2951,10 +3374,8 @@ function () {
   }, {
     key: "_getConfig",
     value: function _getConfig(config) {
-      config = _objectSpread({}, Default, config);
-
-      _util.default.typeCheckConfig(NAME, config, DefaultType);
-
+      config = _objectSpread({}, Default, {}, config);
+      _util__WEBPACK_IMPORTED_MODULE_1__["default"].typeCheckConfig(NAME, config, DefaultType);
       return config;
     }
   }, {
@@ -2966,7 +3387,8 @@ function () {
         return;
       }
 
-      var direction = absDeltax / this.touchDeltaX; // swipe left
+      var direction = absDeltax / this.touchDeltaX;
+      this.touchDeltaX = 0; // swipe left
 
       if (direction > 0) {
         this.prev();
@@ -2983,13 +3405,13 @@ function () {
       var _this2 = this;
 
       if (this._config.keyboard) {
-        (0, _jquery.default)(this._element).on(Event.KEYDOWN, function (event) {
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).on(Event.KEYDOWN, function (event) {
           return _this2._keydown(event);
         });
       }
 
       if (this._config.pause === 'hover') {
-        (0, _jquery.default)(this._element).on(Event.MOUSEENTER, function (event) {
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).on(Event.MOUSEENTER, function (event) {
           return _this2.pause(event);
         }).on(Event.MOUSELEAVE, function (event) {
           return _this2.cycle(event);
@@ -3053,27 +3475,27 @@ function () {
         }
       };
 
-      (0, _jquery.default)(this._element.querySelectorAll(Selector.ITEM_IMG)).on(Event.DRAG_START, function (e) {
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element.querySelectorAll(Selector.ITEM_IMG)).on(Event.DRAG_START, function (e) {
         return e.preventDefault();
       });
 
       if (this._pointerEvent) {
-        (0, _jquery.default)(this._element).on(Event.POINTERDOWN, function (event) {
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).on(Event.POINTERDOWN, function (event) {
           return start(event);
         });
-        (0, _jquery.default)(this._element).on(Event.POINTERUP, function (event) {
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).on(Event.POINTERUP, function (event) {
           return end(event);
         });
 
         this._element.classList.add(ClassName.POINTER_EVENT);
       } else {
-        (0, _jquery.default)(this._element).on(Event.TOUCHSTART, function (event) {
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).on(Event.TOUCHSTART, function (event) {
           return start(event);
         });
-        (0, _jquery.default)(this._element).on(Event.TOUCHMOVE, function (event) {
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).on(Event.TOUCHMOVE, function (event) {
           return move(event);
         });
-        (0, _jquery.default)(this._element).on(Event.TOUCHEND, function (event) {
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).on(Event.TOUCHEND, function (event) {
           return end(event);
         });
       }
@@ -3131,14 +3553,13 @@ function () {
 
       var fromIndex = this._getItemIndex(this._element.querySelector(Selector.ACTIVE_ITEM));
 
-      var slideEvent = _jquery.default.Event(Event.SLIDE, {
+      var slideEvent = jquery__WEBPACK_IMPORTED_MODULE_0___default.a.Event(Event.SLIDE, {
         relatedTarget: relatedTarget,
         direction: eventDirectionName,
         from: fromIndex,
         to: targetIndex
       });
-
-      (0, _jquery.default)(this._element).trigger(slideEvent);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).trigger(slideEvent);
       return slideEvent;
     }
   }, {
@@ -3146,12 +3567,12 @@ function () {
     value: function _setActiveIndicatorElement(element) {
       if (this._indicatorsElement) {
         var indicators = [].slice.call(this._indicatorsElement.querySelectorAll(Selector.ACTIVE));
-        (0, _jquery.default)(indicators).removeClass(ClassName.ACTIVE);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(indicators).removeClass(ClassName.ACTIVE);
 
         var nextIndicator = this._indicatorsElement.children[this._getItemIndex(element)];
 
         if (nextIndicator) {
-          (0, _jquery.default)(nextIndicator).addClass(ClassName.ACTIVE);
+          jquery__WEBPACK_IMPORTED_MODULE_0___default()(nextIndicator).addClass(ClassName.ACTIVE);
         }
       }
     }
@@ -3183,7 +3604,7 @@ function () {
         eventDirectionName = Direction.RIGHT;
       }
 
-      if (nextElement && (0, _jquery.default)(nextElement).hasClass(ClassName.ACTIVE)) {
+      if (nextElement && jquery__WEBPACK_IMPORTED_MODULE_0___default()(nextElement).hasClass(ClassName.ACTIVE)) {
         this._isSliding = false;
         return;
       }
@@ -3207,20 +3628,18 @@ function () {
 
       this._setActiveIndicatorElement(nextElement);
 
-      var slidEvent = _jquery.default.Event(Event.SLID, {
+      var slidEvent = jquery__WEBPACK_IMPORTED_MODULE_0___default.a.Event(Event.SLID, {
         relatedTarget: nextElement,
         direction: eventDirectionName,
         from: activeElementIndex,
         to: nextElementIndex
       });
 
-      if ((0, _jquery.default)(this._element).hasClass(ClassName.SLIDE)) {
-        (0, _jquery.default)(nextElement).addClass(orderClassName);
-
-        _util.default.reflow(nextElement);
-
-        (0, _jquery.default)(activeElement).addClass(directionalClassName);
-        (0, _jquery.default)(nextElement).addClass(directionalClassName);
+      if (jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).hasClass(ClassName.SLIDE)) {
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(nextElement).addClass(orderClassName);
+        _util__WEBPACK_IMPORTED_MODULE_1__["default"].reflow(nextElement);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(activeElement).addClass(directionalClassName);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(nextElement).addClass(directionalClassName);
         var nextElementInterval = parseInt(nextElement.getAttribute('data-interval'), 10);
 
         if (nextElementInterval) {
@@ -3230,21 +3649,20 @@ function () {
           this._config.interval = this._config.defaultInterval || this._config.interval;
         }
 
-        var transitionDuration = _util.default.getTransitionDurationFromElement(activeElement);
-
-        (0, _jquery.default)(activeElement).one(_util.default.TRANSITION_END, function () {
-          (0, _jquery.default)(nextElement).removeClass("".concat(directionalClassName, " ").concat(orderClassName)).addClass(ClassName.ACTIVE);
-          (0, _jquery.default)(activeElement).removeClass("".concat(ClassName.ACTIVE, " ").concat(orderClassName, " ").concat(directionalClassName));
+        var transitionDuration = _util__WEBPACK_IMPORTED_MODULE_1__["default"].getTransitionDurationFromElement(activeElement);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(activeElement).one(_util__WEBPACK_IMPORTED_MODULE_1__["default"].TRANSITION_END, function () {
+          jquery__WEBPACK_IMPORTED_MODULE_0___default()(nextElement).removeClass("".concat(directionalClassName, " ").concat(orderClassName)).addClass(ClassName.ACTIVE);
+          jquery__WEBPACK_IMPORTED_MODULE_0___default()(activeElement).removeClass("".concat(ClassName.ACTIVE, " ").concat(orderClassName, " ").concat(directionalClassName));
           _this4._isSliding = false;
           setTimeout(function () {
-            return (0, _jquery.default)(_this4._element).trigger(slidEvent);
+            return jquery__WEBPACK_IMPORTED_MODULE_0___default()(_this4._element).trigger(slidEvent);
           }, 0);
         }).emulateTransitionEnd(transitionDuration);
       } else {
-        (0, _jquery.default)(activeElement).removeClass(ClassName.ACTIVE);
-        (0, _jquery.default)(nextElement).addClass(ClassName.ACTIVE);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(activeElement).removeClass(ClassName.ACTIVE);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(nextElement).addClass(ClassName.ACTIVE);
         this._isSliding = false;
-        (0, _jquery.default)(this._element).trigger(slidEvent);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).trigger(slidEvent);
       }
 
       if (isCycling) {
@@ -3256,19 +3674,19 @@ function () {
     key: "_jQueryInterface",
     value: function _jQueryInterface(config) {
       return this.each(function () {
-        var data = (0, _jquery.default)(this).data(DATA_KEY);
+        var data = jquery__WEBPACK_IMPORTED_MODULE_0___default()(this).data(DATA_KEY);
 
-        var _config = _objectSpread({}, Default, (0, _jquery.default)(this).data());
+        var _config = _objectSpread({}, Default, {}, jquery__WEBPACK_IMPORTED_MODULE_0___default()(this).data());
 
         if (_typeof(config) === 'object') {
-          _config = _objectSpread({}, _config, config);
+          _config = _objectSpread({}, _config, {}, config);
         }
 
         var action = typeof config === 'string' ? config : _config.slide;
 
         if (!data) {
           data = new Carousel(this, _config);
-          (0, _jquery.default)(this).data(DATA_KEY, data);
+          jquery__WEBPACK_IMPORTED_MODULE_0___default()(this).data(DATA_KEY, data);
         }
 
         if (typeof config === 'number') {
@@ -3288,19 +3706,19 @@ function () {
   }, {
     key: "_dataApiClickHandler",
     value: function _dataApiClickHandler(event) {
-      var selector = _util.default.getSelectorFromElement(this);
+      var selector = _util__WEBPACK_IMPORTED_MODULE_1__["default"].getSelectorFromElement(this);
 
       if (!selector) {
         return;
       }
 
-      var target = (0, _jquery.default)(selector)[0];
+      var target = jquery__WEBPACK_IMPORTED_MODULE_0___default()(selector)[0];
 
-      if (!target || !(0, _jquery.default)(target).hasClass(ClassName.CAROUSEL)) {
+      if (!target || !jquery__WEBPACK_IMPORTED_MODULE_0___default()(target).hasClass(ClassName.CAROUSEL)) {
         return;
       }
 
-      var config = _objectSpread({}, (0, _jquery.default)(target).data(), (0, _jquery.default)(this).data());
+      var config = _objectSpread({}, jquery__WEBPACK_IMPORTED_MODULE_0___default()(target).data(), {}, jquery__WEBPACK_IMPORTED_MODULE_0___default()(this).data());
 
       var slideIndex = this.getAttribute('data-slide-to');
 
@@ -3308,10 +3726,10 @@ function () {
         config.interval = false;
       }
 
-      Carousel._jQueryInterface.call((0, _jquery.default)(target), config);
+      Carousel._jQueryInterface.call(jquery__WEBPACK_IMPORTED_MODULE_0___default()(target), config);
 
       if (slideIndex) {
-        (0, _jquery.default)(target).data(DATA_KEY).to(slideIndex);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(target).data(DATA_KEY).to(slideIndex);
       }
 
       event.preventDefault();
@@ -3337,12 +3755,12 @@ function () {
  */
 
 
-(0, _jquery.default)(document).on(Event.CLICK_DATA_API, Selector.DATA_SLIDE, Carousel._dataApiClickHandler);
-(0, _jquery.default)(window).on(Event.LOAD_DATA_API, function () {
+jquery__WEBPACK_IMPORTED_MODULE_0___default()(document).on(Event.CLICK_DATA_API, Selector.DATA_SLIDE, Carousel._dataApiClickHandler);
+jquery__WEBPACK_IMPORTED_MODULE_0___default()(window).on(Event.LOAD_DATA_API, function () {
   var carousels = [].slice.call(document.querySelectorAll(Selector.DATA_RIDE));
 
   for (var i = 0, len = carousels.length; i < len; i++) {
-    var $carousel = (0, _jquery.default)(carousels[i]);
+    var $carousel = jquery__WEBPACK_IMPORTED_MODULE_0___default()(carousels[i]);
 
     Carousel._jQueryInterface.call($carousel, $carousel.data());
   }
@@ -3353,16 +3771,15 @@ function () {
  * ------------------------------------------------------------------------
  */
 
-_jquery.default.fn[NAME] = Carousel._jQueryInterface;
-_jquery.default.fn[NAME].Constructor = Carousel;
+jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME] = Carousel._jQueryInterface;
+jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME].Constructor = Carousel;
 
-_jquery.default.fn[NAME].noConflict = function () {
-  _jquery.default.fn[NAME] = JQUERY_NO_CONFLICT;
+jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME].noConflict = function () {
+  jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME] = JQUERY_NO_CONFLICT;
   return Carousel._jQueryInterface;
 };
 
-var _default = Carousel;
-exports.default = _default;
+/* harmony default export */ __webpack_exports__["default"] = (Carousel);
 
 /***/ }),
 
@@ -3370,26 +3787,19 @@ exports.default = _default;
 /*!***************************************************!*\
   !*** ./node_modules/bootstrap/js/src/collapse.js ***!
   \***************************************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
+/*! exports provided: default */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = void 0;
-
-var _jquery = _interopRequireDefault(__webpack_require__(/*! jquery */ "./node_modules/jquery/dist/jquery.js"));
-
-var _util = _interopRequireDefault(__webpack_require__(/*! ./util */ "./node_modules/bootstrap/js/src/util.js"));
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
+__webpack_require__.r(__webpack_exports__);
+/* harmony import */ var jquery__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! jquery */ "./node_modules/jquery/dist/jquery.js");
+/* harmony import */ var jquery__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(jquery__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _util__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./util */ "./node_modules/bootstrap/js/src/util.js");
 function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof = function _typeof(obj) { return typeof obj; }; } else { _typeof = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof(obj); }
 
-function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i] != null ? arguments[i] : {}; var ownKeys = Object.keys(source); if (typeof Object.getOwnPropertySymbols === 'function') { ownKeys = ownKeys.concat(Object.getOwnPropertySymbols(source).filter(function (sym) { return Object.getOwnPropertyDescriptor(source, sym).enumerable; })); } ownKeys.forEach(function (key) { _defineProperty(target, key, source[key]); }); } return target; }
+function ownKeys(object, enumerableOnly) { var keys = Object.keys(object); if (Object.getOwnPropertySymbols) { var symbols = Object.getOwnPropertySymbols(object); if (enumerableOnly) symbols = symbols.filter(function (sym) { return Object.getOwnPropertyDescriptor(object, sym).enumerable; }); keys.push.apply(keys, symbols); } return keys; }
+
+function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i] != null ? arguments[i] : {}; if (i % 2) { ownKeys(Object(source), true).forEach(function (key) { _defineProperty(target, key, source[key]); }); } else if (Object.getOwnPropertyDescriptors) { Object.defineProperties(target, Object.getOwnPropertyDescriptors(source)); } else { ownKeys(Object(source)).forEach(function (key) { Object.defineProperty(target, key, Object.getOwnPropertyDescriptor(source, key)); }); } } return target; }
 
 function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
 
@@ -3400,16 +3810,25 @@ function _defineProperties(target, props) { for (var i = 0; i < props.length; i+
 function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _defineProperties(Constructor.prototype, protoProps); if (staticProps) _defineProperties(Constructor, staticProps); return Constructor; }
 
 /**
+ * --------------------------------------------------------------------------
+ * Bootstrap (v4.4.1): collapse.js
+ * Licensed under MIT (https://github.com/twbs/bootstrap/blob/master/LICENSE)
+ * --------------------------------------------------------------------------
+ */
+
+
+/**
  * ------------------------------------------------------------------------
  * Constants
  * ------------------------------------------------------------------------
  */
+
 var NAME = 'collapse';
-var VERSION = '4.3.1';
+var VERSION = '4.4.1';
 var DATA_KEY = 'bs.collapse';
 var EVENT_KEY = ".".concat(DATA_KEY);
 var DATA_API_KEY = '.data-api';
-var JQUERY_NO_CONFLICT = _jquery.default.fn[NAME];
+var JQUERY_NO_CONFLICT = jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME];
 var Default = {
   toggle: true,
   parent: ''
@@ -3438,13 +3857,12 @@ var Dimension = {
 var Selector = {
   ACTIVES: '.show, .collapsing',
   DATA_TOGGLE: '[data-toggle="collapse"]'
-  /**
-   * ------------------------------------------------------------------------
-   * Class Definition
-   * ------------------------------------------------------------------------
-   */
-
 };
+/**
+ * ------------------------------------------------------------------------
+ * Class Definition
+ * ------------------------------------------------------------------------
+ */
 
 var Collapse =
 /*#__PURE__*/
@@ -3460,9 +3878,7 @@ function () {
 
     for (var i = 0, len = toggleList.length; i < len; i++) {
       var elem = toggleList[i];
-
-      var selector = _util.default.getSelectorFromElement(elem);
-
+      var selector = _util__WEBPACK_IMPORTED_MODULE_1__["default"].getSelectorFromElement(elem);
       var filterElement = [].slice.call(document.querySelectorAll(selector)).filter(function (foundElem) {
         return foundElem === element;
       });
@@ -3490,7 +3906,7 @@ function () {
     key: "toggle",
     // Public
     value: function toggle() {
-      if ((0, _jquery.default)(this._element).hasClass(ClassName.SHOW)) {
+      if (jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).hasClass(ClassName.SHOW)) {
         this.hide();
       } else {
         this.show();
@@ -3501,7 +3917,7 @@ function () {
     value: function show() {
       var _this = this;
 
-      if (this._isTransitioning || (0, _jquery.default)(this._element).hasClass(ClassName.SHOW)) {
+      if (this._isTransitioning || jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).hasClass(ClassName.SHOW)) {
         return;
       }
 
@@ -3523,55 +3939,52 @@ function () {
       }
 
       if (actives) {
-        activesData = (0, _jquery.default)(actives).not(this._selector).data(DATA_KEY);
+        activesData = jquery__WEBPACK_IMPORTED_MODULE_0___default()(actives).not(this._selector).data(DATA_KEY);
 
         if (activesData && activesData._isTransitioning) {
           return;
         }
       }
 
-      var startEvent = _jquery.default.Event(Event.SHOW);
-
-      (0, _jquery.default)(this._element).trigger(startEvent);
+      var startEvent = jquery__WEBPACK_IMPORTED_MODULE_0___default.a.Event(Event.SHOW);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).trigger(startEvent);
 
       if (startEvent.isDefaultPrevented()) {
         return;
       }
 
       if (actives) {
-        Collapse._jQueryInterface.call((0, _jquery.default)(actives).not(this._selector), 'hide');
+        Collapse._jQueryInterface.call(jquery__WEBPACK_IMPORTED_MODULE_0___default()(actives).not(this._selector), 'hide');
 
         if (!activesData) {
-          (0, _jquery.default)(actives).data(DATA_KEY, null);
+          jquery__WEBPACK_IMPORTED_MODULE_0___default()(actives).data(DATA_KEY, null);
         }
       }
 
       var dimension = this._getDimension();
 
-      (0, _jquery.default)(this._element).removeClass(ClassName.COLLAPSE).addClass(ClassName.COLLAPSING);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).removeClass(ClassName.COLLAPSE).addClass(ClassName.COLLAPSING);
       this._element.style[dimension] = 0;
 
       if (this._triggerArray.length) {
-        (0, _jquery.default)(this._triggerArray).removeClass(ClassName.COLLAPSED).attr('aria-expanded', true);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._triggerArray).removeClass(ClassName.COLLAPSED).attr('aria-expanded', true);
       }
 
       this.setTransitioning(true);
 
       var complete = function complete() {
-        (0, _jquery.default)(_this._element).removeClass(ClassName.COLLAPSING).addClass(ClassName.COLLAPSE).addClass(ClassName.SHOW);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(_this._element).removeClass(ClassName.COLLAPSING).addClass(ClassName.COLLAPSE).addClass(ClassName.SHOW);
         _this._element.style[dimension] = '';
 
         _this.setTransitioning(false);
 
-        (0, _jquery.default)(_this._element).trigger(Event.SHOWN);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(_this._element).trigger(Event.SHOWN);
       };
 
       var capitalizedDimension = dimension[0].toUpperCase() + dimension.slice(1);
       var scrollSize = "scroll".concat(capitalizedDimension);
-
-      var transitionDuration = _util.default.getTransitionDurationFromElement(this._element);
-
-      (0, _jquery.default)(this._element).one(_util.default.TRANSITION_END, complete).emulateTransitionEnd(transitionDuration);
+      var transitionDuration = _util__WEBPACK_IMPORTED_MODULE_1__["default"].getTransitionDurationFromElement(this._element);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).one(_util__WEBPACK_IMPORTED_MODULE_1__["default"].TRANSITION_END, complete).emulateTransitionEnd(transitionDuration);
       this._element.style[dimension] = "".concat(this._element[scrollSize], "px");
     }
   }, {
@@ -3579,13 +3992,12 @@ function () {
     value: function hide() {
       var _this2 = this;
 
-      if (this._isTransitioning || !(0, _jquery.default)(this._element).hasClass(ClassName.SHOW)) {
+      if (this._isTransitioning || !jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).hasClass(ClassName.SHOW)) {
         return;
       }
 
-      var startEvent = _jquery.default.Event(Event.HIDE);
-
-      (0, _jquery.default)(this._element).trigger(startEvent);
+      var startEvent = jquery__WEBPACK_IMPORTED_MODULE_0___default.a.Event(Event.HIDE);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).trigger(startEvent);
 
       if (startEvent.isDefaultPrevented()) {
         return;
@@ -3594,23 +4006,20 @@ function () {
       var dimension = this._getDimension();
 
       this._element.style[dimension] = "".concat(this._element.getBoundingClientRect()[dimension], "px");
-
-      _util.default.reflow(this._element);
-
-      (0, _jquery.default)(this._element).addClass(ClassName.COLLAPSING).removeClass(ClassName.COLLAPSE).removeClass(ClassName.SHOW);
+      _util__WEBPACK_IMPORTED_MODULE_1__["default"].reflow(this._element);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).addClass(ClassName.COLLAPSING).removeClass(ClassName.COLLAPSE).removeClass(ClassName.SHOW);
       var triggerArrayLength = this._triggerArray.length;
 
       if (triggerArrayLength > 0) {
         for (var i = 0; i < triggerArrayLength; i++) {
           var trigger = this._triggerArray[i];
-
-          var selector = _util.default.getSelectorFromElement(trigger);
+          var selector = _util__WEBPACK_IMPORTED_MODULE_1__["default"].getSelectorFromElement(trigger);
 
           if (selector !== null) {
-            var $elem = (0, _jquery.default)([].slice.call(document.querySelectorAll(selector)));
+            var $elem = jquery__WEBPACK_IMPORTED_MODULE_0___default()([].slice.call(document.querySelectorAll(selector)));
 
             if (!$elem.hasClass(ClassName.SHOW)) {
-              (0, _jquery.default)(trigger).addClass(ClassName.COLLAPSED).attr('aria-expanded', false);
+              jquery__WEBPACK_IMPORTED_MODULE_0___default()(trigger).addClass(ClassName.COLLAPSED).attr('aria-expanded', false);
             }
           }
         }
@@ -3621,14 +4030,12 @@ function () {
       var complete = function complete() {
         _this2.setTransitioning(false);
 
-        (0, _jquery.default)(_this2._element).removeClass(ClassName.COLLAPSING).addClass(ClassName.COLLAPSE).trigger(Event.HIDDEN);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(_this2._element).removeClass(ClassName.COLLAPSING).addClass(ClassName.COLLAPSE).trigger(Event.HIDDEN);
       };
 
       this._element.style[dimension] = '';
-
-      var transitionDuration = _util.default.getTransitionDurationFromElement(this._element);
-
-      (0, _jquery.default)(this._element).one(_util.default.TRANSITION_END, complete).emulateTransitionEnd(transitionDuration);
+      var transitionDuration = _util__WEBPACK_IMPORTED_MODULE_1__["default"].getTransitionDurationFromElement(this._element);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).one(_util__WEBPACK_IMPORTED_MODULE_1__["default"].TRANSITION_END, complete).emulateTransitionEnd(transitionDuration);
     }
   }, {
     key: "setTransitioning",
@@ -3638,8 +4045,7 @@ function () {
   }, {
     key: "dispose",
     value: function dispose() {
-      _jquery.default.removeData(this._element, DATA_KEY);
-
+      jquery__WEBPACK_IMPORTED_MODULE_0___default.a.removeData(this._element, DATA_KEY);
       this._config = null;
       this._parent = null;
       this._element = null;
@@ -3650,17 +4056,16 @@ function () {
   }, {
     key: "_getConfig",
     value: function _getConfig(config) {
-      config = _objectSpread({}, Default, config);
+      config = _objectSpread({}, Default, {}, config);
       config.toggle = Boolean(config.toggle); // Coerce string values
 
-      _util.default.typeCheckConfig(NAME, config, DefaultType);
-
+      _util__WEBPACK_IMPORTED_MODULE_1__["default"].typeCheckConfig(NAME, config, DefaultType);
       return config;
     }
   }, {
     key: "_getDimension",
     value: function _getDimension() {
-      var hasWidth = (0, _jquery.default)(this._element).hasClass(Dimension.WIDTH);
+      var hasWidth = jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).hasClass(Dimension.WIDTH);
       return hasWidth ? Dimension.WIDTH : Dimension.HEIGHT;
     }
   }, {
@@ -3670,7 +4075,7 @@ function () {
 
       var parent;
 
-      if (_util.default.isElement(this._config.parent)) {
+      if (_util__WEBPACK_IMPORTED_MODULE_1__["default"].isElement(this._config.parent)) {
         parent = this._config.parent; // It's a jQuery object
 
         if (typeof this._config.parent.jquery !== 'undefined') {
@@ -3682,7 +4087,7 @@ function () {
 
       var selector = "[data-toggle=\"collapse\"][data-parent=\"".concat(this._config.parent, "\"]");
       var children = [].slice.call(parent.querySelectorAll(selector));
-      (0, _jquery.default)(children).each(function (i, element) {
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(children).each(function (i, element) {
         _this3._addAriaAndCollapsedClass(Collapse._getTargetFromElement(element), [element]);
       });
       return parent;
@@ -3690,28 +4095,27 @@ function () {
   }, {
     key: "_addAriaAndCollapsedClass",
     value: function _addAriaAndCollapsedClass(element, triggerArray) {
-      var isOpen = (0, _jquery.default)(element).hasClass(ClassName.SHOW);
+      var isOpen = jquery__WEBPACK_IMPORTED_MODULE_0___default()(element).hasClass(ClassName.SHOW);
 
       if (triggerArray.length) {
-        (0, _jquery.default)(triggerArray).toggleClass(ClassName.COLLAPSED, !isOpen).attr('aria-expanded', isOpen);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(triggerArray).toggleClass(ClassName.COLLAPSED, !isOpen).attr('aria-expanded', isOpen);
       }
     } // Static
 
   }], [{
     key: "_getTargetFromElement",
     value: function _getTargetFromElement(element) {
-      var selector = _util.default.getSelectorFromElement(element);
-
+      var selector = _util__WEBPACK_IMPORTED_MODULE_1__["default"].getSelectorFromElement(element);
       return selector ? document.querySelector(selector) : null;
     }
   }, {
     key: "_jQueryInterface",
     value: function _jQueryInterface(config) {
       return this.each(function () {
-        var $this = (0, _jquery.default)(this);
+        var $this = jquery__WEBPACK_IMPORTED_MODULE_0___default()(this);
         var data = $this.data(DATA_KEY);
 
-        var _config = _objectSpread({}, Default, $this.data(), _typeof(config) === 'object' && config ? config : {});
+        var _config = _objectSpread({}, Default, {}, $this.data(), {}, _typeof(config) === 'object' && config ? config : {});
 
         if (!data && _config.toggle && /show|hide/.test(config)) {
           _config.toggle = false;
@@ -3752,19 +4156,17 @@ function () {
  */
 
 
-(0, _jquery.default)(document).on(Event.CLICK_DATA_API, Selector.DATA_TOGGLE, function (event) {
+jquery__WEBPACK_IMPORTED_MODULE_0___default()(document).on(Event.CLICK_DATA_API, Selector.DATA_TOGGLE, function (event) {
   // preventDefault only for <a> elements (which change the URL) not inside the collapsible element
   if (event.currentTarget.tagName === 'A') {
     event.preventDefault();
   }
 
-  var $trigger = (0, _jquery.default)(this);
-
-  var selector = _util.default.getSelectorFromElement(this);
-
+  var $trigger = jquery__WEBPACK_IMPORTED_MODULE_0___default()(this);
+  var selector = _util__WEBPACK_IMPORTED_MODULE_1__["default"].getSelectorFromElement(this);
   var selectors = [].slice.call(document.querySelectorAll(selector));
-  (0, _jquery.default)(selectors).each(function () {
-    var $target = (0, _jquery.default)(this);
+  jquery__WEBPACK_IMPORTED_MODULE_0___default()(selectors).each(function () {
+    var $target = jquery__WEBPACK_IMPORTED_MODULE_0___default()(this);
     var data = $target.data(DATA_KEY);
     var config = data ? 'toggle' : $trigger.data();
 
@@ -3777,16 +4179,15 @@ function () {
  * ------------------------------------------------------------------------
  */
 
-_jquery.default.fn[NAME] = Collapse._jQueryInterface;
-_jquery.default.fn[NAME].Constructor = Collapse;
+jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME] = Collapse._jQueryInterface;
+jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME].Constructor = Collapse;
 
-_jquery.default.fn[NAME].noConflict = function () {
-  _jquery.default.fn[NAME] = JQUERY_NO_CONFLICT;
+jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME].noConflict = function () {
+  jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME] = JQUERY_NO_CONFLICT;
   return Collapse._jQueryInterface;
 };
 
-var _default = Collapse;
-exports.default = _default;
+/* harmony default export */ __webpack_exports__["default"] = (Collapse);
 
 /***/ }),
 
@@ -3794,26 +4195,19 @@ exports.default = _default;
 /*!************************************************!*\
   !*** ./node_modules/bootstrap/js/src/modal.js ***!
   \************************************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
+/*! exports provided: default */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = void 0;
-
-var _jquery = _interopRequireDefault(__webpack_require__(/*! jquery */ "./node_modules/jquery/dist/jquery.js"));
-
-var _util = _interopRequireDefault(__webpack_require__(/*! ./util */ "./node_modules/bootstrap/js/src/util.js"));
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
+__webpack_require__.r(__webpack_exports__);
+/* harmony import */ var jquery__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! jquery */ "./node_modules/jquery/dist/jquery.js");
+/* harmony import */ var jquery__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(jquery__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _util__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./util */ "./node_modules/bootstrap/js/src/util.js");
 function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof = function _typeof(obj) { return typeof obj; }; } else { _typeof = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof(obj); }
 
-function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i] != null ? arguments[i] : {}; var ownKeys = Object.keys(source); if (typeof Object.getOwnPropertySymbols === 'function') { ownKeys = ownKeys.concat(Object.getOwnPropertySymbols(source).filter(function (sym) { return Object.getOwnPropertyDescriptor(source, sym).enumerable; })); } ownKeys.forEach(function (key) { _defineProperty(target, key, source[key]); }); } return target; }
+function ownKeys(object, enumerableOnly) { var keys = Object.keys(object); if (Object.getOwnPropertySymbols) { var symbols = Object.getOwnPropertySymbols(object); if (enumerableOnly) symbols = symbols.filter(function (sym) { return Object.getOwnPropertyDescriptor(object, sym).enumerable; }); keys.push.apply(keys, symbols); } return keys; }
+
+function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i] != null ? arguments[i] : {}; if (i % 2) { ownKeys(Object(source), true).forEach(function (key) { _defineProperty(target, key, source[key]); }); } else if (Object.getOwnPropertyDescriptors) { Object.defineProperties(target, Object.getOwnPropertyDescriptors(source)); } else { ownKeys(Object(source)).forEach(function (key) { Object.defineProperty(target, key, Object.getOwnPropertyDescriptor(source, key)); }); } } return target; }
 
 function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
 
@@ -3824,16 +4218,25 @@ function _defineProperties(target, props) { for (var i = 0; i < props.length; i+
 function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _defineProperties(Constructor.prototype, protoProps); if (staticProps) _defineProperties(Constructor, staticProps); return Constructor; }
 
 /**
+ * --------------------------------------------------------------------------
+ * Bootstrap (v4.4.1): modal.js
+ * Licensed under MIT (https://github.com/twbs/bootstrap/blob/master/LICENSE)
+ * --------------------------------------------------------------------------
+ */
+
+
+/**
  * ------------------------------------------------------------------------
  * Constants
  * ------------------------------------------------------------------------
  */
+
 var NAME = 'modal';
-var VERSION = '4.3.1';
+var VERSION = '4.4.1';
 var DATA_KEY = 'bs.modal';
 var EVENT_KEY = ".".concat(DATA_KEY);
 var DATA_API_KEY = '.data-api';
-var JQUERY_NO_CONFLICT = _jquery.default.fn[NAME];
+var JQUERY_NO_CONFLICT = jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME];
 var ESCAPE_KEYCODE = 27; // KeyboardEvent.which value for Escape (Esc) key
 
 var Default = {
@@ -3850,6 +4253,7 @@ var DefaultType = {
 };
 var Event = {
   HIDE: "hide".concat(EVENT_KEY),
+  HIDE_PREVENTED: "hidePrevented".concat(EVENT_KEY),
   HIDDEN: "hidden".concat(EVENT_KEY),
   SHOW: "show".concat(EVENT_KEY),
   SHOWN: "shown".concat(EVENT_KEY),
@@ -3867,7 +4271,8 @@ var ClassName = {
   BACKDROP: 'modal-backdrop',
   OPEN: 'modal-open',
   FADE: 'fade',
-  SHOW: 'show'
+  SHOW: 'show',
+  STATIC: 'modal-static'
 };
 var Selector = {
   DIALOG: '.modal-dialog',
@@ -3876,13 +4281,12 @@ var Selector = {
   DATA_DISMISS: '[data-dismiss="modal"]',
   FIXED_CONTENT: '.fixed-top, .fixed-bottom, .is-fixed, .sticky-top',
   STICKY_CONTENT: '.sticky-top'
-  /**
-   * ------------------------------------------------------------------------
-   * Class Definition
-   * ------------------------------------------------------------------------
-   */
-
 };
+/**
+ * ------------------------------------------------------------------------
+ * Class Definition
+ * ------------------------------------------------------------------------
+ */
 
 var Modal =
 /*#__PURE__*/
@@ -3917,15 +4321,14 @@ function () {
         return;
       }
 
-      if ((0, _jquery.default)(this._element).hasClass(ClassName.FADE)) {
+      if (jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).hasClass(ClassName.FADE)) {
         this._isTransitioning = true;
       }
 
-      var showEvent = _jquery.default.Event(Event.SHOW, {
+      var showEvent = jquery__WEBPACK_IMPORTED_MODULE_0___default.a.Event(Event.SHOW, {
         relatedTarget: relatedTarget
       });
-
-      (0, _jquery.default)(this._element).trigger(showEvent);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).trigger(showEvent);
 
       if (this._isShown || showEvent.isDefaultPrevented()) {
         return;
@@ -3943,12 +4346,12 @@ function () {
 
       this._setResizeEvent();
 
-      (0, _jquery.default)(this._element).on(Event.CLICK_DISMISS, Selector.DATA_DISMISS, function (event) {
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).on(Event.CLICK_DISMISS, Selector.DATA_DISMISS, function (event) {
         return _this.hide(event);
       });
-      (0, _jquery.default)(this._dialog).on(Event.MOUSEDOWN_DISMISS, function () {
-        (0, _jquery.default)(_this._element).one(Event.MOUSEUP_DISMISS, function (event) {
-          if ((0, _jquery.default)(event.target).is(_this._element)) {
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._dialog).on(Event.MOUSEDOWN_DISMISS, function () {
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(_this._element).one(Event.MOUSEUP_DISMISS, function (event) {
+          if (jquery__WEBPACK_IMPORTED_MODULE_0___default()(event.target).is(_this._element)) {
             _this._ignoreBackdropClick = true;
           }
         });
@@ -3971,16 +4374,15 @@ function () {
         return;
       }
 
-      var hideEvent = _jquery.default.Event(Event.HIDE);
-
-      (0, _jquery.default)(this._element).trigger(hideEvent);
+      var hideEvent = jquery__WEBPACK_IMPORTED_MODULE_0___default.a.Event(Event.HIDE);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).trigger(hideEvent);
 
       if (!this._isShown || hideEvent.isDefaultPrevented()) {
         return;
       }
 
       this._isShown = false;
-      var transition = (0, _jquery.default)(this._element).hasClass(ClassName.FADE);
+      var transition = jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).hasClass(ClassName.FADE);
 
       if (transition) {
         this._isTransitioning = true;
@@ -3990,15 +4392,14 @@ function () {
 
       this._setResizeEvent();
 
-      (0, _jquery.default)(document).off(Event.FOCUSIN);
-      (0, _jquery.default)(this._element).removeClass(ClassName.SHOW);
-      (0, _jquery.default)(this._element).off(Event.CLICK_DISMISS);
-      (0, _jquery.default)(this._dialog).off(Event.MOUSEDOWN_DISMISS);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(document).off(Event.FOCUSIN);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).removeClass(ClassName.SHOW);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).off(Event.CLICK_DISMISS);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._dialog).off(Event.MOUSEDOWN_DISMISS);
 
       if (transition) {
-        var transitionDuration = _util.default.getTransitionDurationFromElement(this._element);
-
-        (0, _jquery.default)(this._element).one(_util.default.TRANSITION_END, function (event) {
+        var transitionDuration = _util__WEBPACK_IMPORTED_MODULE_1__["default"].getTransitionDurationFromElement(this._element);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).one(_util__WEBPACK_IMPORTED_MODULE_1__["default"].TRANSITION_END, function (event) {
           return _this2._hideModal(event);
         }).emulateTransitionEnd(transitionDuration);
       } else {
@@ -4009,7 +4410,7 @@ function () {
     key: "dispose",
     value: function dispose() {
       [window, this._element, this._dialog].forEach(function (htmlElement) {
-        return (0, _jquery.default)(htmlElement).off(EVENT_KEY);
+        return jquery__WEBPACK_IMPORTED_MODULE_0___default()(htmlElement).off(EVENT_KEY);
       });
       /**
        * `document` has 2 events `Event.FOCUSIN` and `Event.CLICK_DATA_API`
@@ -4017,10 +4418,8 @@ function () {
        * It will remove `Event.CLICK_DATA_API` event that should remain
        */
 
-      (0, _jquery.default)(document).off(Event.FOCUSIN);
-
-      _jquery.default.removeData(this._element, DATA_KEY);
-
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(document).off(Event.FOCUSIN);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default.a.removeData(this._element, DATA_KEY);
       this._config = null;
       this._element = null;
       this._dialog = null;
@@ -4040,18 +4439,42 @@ function () {
   }, {
     key: "_getConfig",
     value: function _getConfig(config) {
-      config = _objectSpread({}, Default, config);
-
-      _util.default.typeCheckConfig(NAME, config, DefaultType);
-
+      config = _objectSpread({}, Default, {}, config);
+      _util__WEBPACK_IMPORTED_MODULE_1__["default"].typeCheckConfig(NAME, config, DefaultType);
       return config;
+    }
+  }, {
+    key: "_triggerBackdropTransition",
+    value: function _triggerBackdropTransition() {
+      var _this3 = this;
+
+      if (this._config.backdrop === 'static') {
+        var hideEventPrevented = jquery__WEBPACK_IMPORTED_MODULE_0___default.a.Event(Event.HIDE_PREVENTED);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).trigger(hideEventPrevented);
+
+        if (hideEventPrevented.defaultPrevented) {
+          return;
+        }
+
+        this._element.classList.add(ClassName.STATIC);
+
+        var modalTransitionDuration = _util__WEBPACK_IMPORTED_MODULE_1__["default"].getTransitionDurationFromElement(this._element);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).one(_util__WEBPACK_IMPORTED_MODULE_1__["default"].TRANSITION_END, function () {
+          _this3._element.classList.remove(ClassName.STATIC);
+        }).emulateTransitionEnd(modalTransitionDuration);
+
+        this._element.focus();
+      } else {
+        this.hide();
+      }
     }
   }, {
     key: "_showElement",
     value: function _showElement(relatedTarget) {
-      var _this3 = this;
+      var _this4 = this;
 
-      var transition = (0, _jquery.default)(this._element).hasClass(ClassName.FADE);
+      var transition = jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).hasClass(ClassName.FADE);
+      var modalBody = this._dialog ? this._dialog.querySelector(Selector.MODAL_BODY) : null;
 
       if (!this._element.parentNode || this._element.parentNode.nodeType !== Node.ELEMENT_NODE) {
         // Don't move modal's DOM position
@@ -4064,39 +4487,38 @@ function () {
 
       this._element.setAttribute('aria-modal', true);
 
-      if ((0, _jquery.default)(this._dialog).hasClass(ClassName.SCROLLABLE)) {
-        this._dialog.querySelector(Selector.MODAL_BODY).scrollTop = 0;
+      if (jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._dialog).hasClass(ClassName.SCROLLABLE) && modalBody) {
+        modalBody.scrollTop = 0;
       } else {
         this._element.scrollTop = 0;
       }
 
       if (transition) {
-        _util.default.reflow(this._element);
+        _util__WEBPACK_IMPORTED_MODULE_1__["default"].reflow(this._element);
       }
 
-      (0, _jquery.default)(this._element).addClass(ClassName.SHOW);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).addClass(ClassName.SHOW);
 
       if (this._config.focus) {
         this._enforceFocus();
       }
 
-      var shownEvent = _jquery.default.Event(Event.SHOWN, {
+      var shownEvent = jquery__WEBPACK_IMPORTED_MODULE_0___default.a.Event(Event.SHOWN, {
         relatedTarget: relatedTarget
       });
 
       var transitionComplete = function transitionComplete() {
-        if (_this3._config.focus) {
-          _this3._element.focus();
+        if (_this4._config.focus) {
+          _this4._element.focus();
         }
 
-        _this3._isTransitioning = false;
-        (0, _jquery.default)(_this3._element).trigger(shownEvent);
+        _this4._isTransitioning = false;
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(_this4._element).trigger(shownEvent);
       };
 
       if (transition) {
-        var transitionDuration = _util.default.getTransitionDurationFromElement(this._dialog);
-
-        (0, _jquery.default)(this._dialog).one(_util.default.TRANSITION_END, transitionComplete).emulateTransitionEnd(transitionDuration);
+        var transitionDuration = _util__WEBPACK_IMPORTED_MODULE_1__["default"].getTransitionDurationFromElement(this._dialog);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._dialog).one(_util__WEBPACK_IMPORTED_MODULE_1__["default"].TRANSITION_END, transitionComplete).emulateTransitionEnd(transitionDuration);
       } else {
         transitionComplete();
       }
@@ -4104,49 +4526,47 @@ function () {
   }, {
     key: "_enforceFocus",
     value: function _enforceFocus() {
-      var _this4 = this;
+      var _this5 = this;
 
-      (0, _jquery.default)(document).off(Event.FOCUSIN) // Guard against infinite focus loop
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(document).off(Event.FOCUSIN) // Guard against infinite focus loop
       .on(Event.FOCUSIN, function (event) {
-        if (document !== event.target && _this4._element !== event.target && (0, _jquery.default)(_this4._element).has(event.target).length === 0) {
-          _this4._element.focus();
+        if (document !== event.target && _this5._element !== event.target && jquery__WEBPACK_IMPORTED_MODULE_0___default()(_this5._element).has(event.target).length === 0) {
+          _this5._element.focus();
         }
       });
     }
   }, {
     key: "_setEscapeEvent",
     value: function _setEscapeEvent() {
-      var _this5 = this;
+      var _this6 = this;
 
       if (this._isShown && this._config.keyboard) {
-        (0, _jquery.default)(this._element).on(Event.KEYDOWN_DISMISS, function (event) {
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).on(Event.KEYDOWN_DISMISS, function (event) {
           if (event.which === ESCAPE_KEYCODE) {
-            event.preventDefault();
-
-            _this5.hide();
+            _this6._triggerBackdropTransition();
           }
         });
       } else if (!this._isShown) {
-        (0, _jquery.default)(this._element).off(Event.KEYDOWN_DISMISS);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).off(Event.KEYDOWN_DISMISS);
       }
     }
   }, {
     key: "_setResizeEvent",
     value: function _setResizeEvent() {
-      var _this6 = this;
+      var _this7 = this;
 
       if (this._isShown) {
-        (0, _jquery.default)(window).on(Event.RESIZE, function (event) {
-          return _this6.handleUpdate(event);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(window).on(Event.RESIZE, function (event) {
+          return _this7.handleUpdate(event);
         });
       } else {
-        (0, _jquery.default)(window).off(Event.RESIZE);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(window).off(Event.RESIZE);
       }
     }
   }, {
     key: "_hideModal",
     value: function _hideModal() {
-      var _this7 = this;
+      var _this8 = this;
 
       this._element.style.display = 'none';
 
@@ -4157,29 +4577,29 @@ function () {
       this._isTransitioning = false;
 
       this._showBackdrop(function () {
-        (0, _jquery.default)(document.body).removeClass(ClassName.OPEN);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(document.body).removeClass(ClassName.OPEN);
 
-        _this7._resetAdjustments();
+        _this8._resetAdjustments();
 
-        _this7._resetScrollbar();
+        _this8._resetScrollbar();
 
-        (0, _jquery.default)(_this7._element).trigger(Event.HIDDEN);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(_this8._element).trigger(Event.HIDDEN);
       });
     }
   }, {
     key: "_removeBackdrop",
     value: function _removeBackdrop() {
       if (this._backdrop) {
-        (0, _jquery.default)(this._backdrop).remove();
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._backdrop).remove();
         this._backdrop = null;
       }
     }
   }, {
     key: "_showBackdrop",
     value: function _showBackdrop(callback) {
-      var _this8 = this;
+      var _this9 = this;
 
-      var animate = (0, _jquery.default)(this._element).hasClass(ClassName.FADE) ? ClassName.FADE : '';
+      var animate = jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).hasClass(ClassName.FADE) ? ClassName.FADE : '';
 
       if (this._isShown && this._config.backdrop) {
         this._backdrop = document.createElement('div');
@@ -4189,10 +4609,10 @@ function () {
           this._backdrop.classList.add(animate);
         }
 
-        (0, _jquery.default)(this._backdrop).appendTo(document.body);
-        (0, _jquery.default)(this._element).on(Event.CLICK_DISMISS, function (event) {
-          if (_this8._ignoreBackdropClick) {
-            _this8._ignoreBackdropClick = false;
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._backdrop).appendTo(document.body);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).on(Event.CLICK_DISMISS, function (event) {
+          if (_this9._ignoreBackdropClick) {
+            _this9._ignoreBackdropClick = false;
             return;
           }
 
@@ -4200,18 +4620,14 @@ function () {
             return;
           }
 
-          if (_this8._config.backdrop === 'static') {
-            _this8._element.focus();
-          } else {
-            _this8.hide();
-          }
+          _this9._triggerBackdropTransition();
         });
 
         if (animate) {
-          _util.default.reflow(this._backdrop);
+          _util__WEBPACK_IMPORTED_MODULE_1__["default"].reflow(this._backdrop);
         }
 
-        (0, _jquery.default)(this._backdrop).addClass(ClassName.SHOW);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._backdrop).addClass(ClassName.SHOW);
 
         if (!callback) {
           return;
@@ -4222,24 +4638,23 @@ function () {
           return;
         }
 
-        var backdropTransitionDuration = _util.default.getTransitionDurationFromElement(this._backdrop);
-
-        (0, _jquery.default)(this._backdrop).one(_util.default.TRANSITION_END, callback).emulateTransitionEnd(backdropTransitionDuration);
+        var backdropTransitionDuration = _util__WEBPACK_IMPORTED_MODULE_1__["default"].getTransitionDurationFromElement(this._backdrop);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._backdrop).one(_util__WEBPACK_IMPORTED_MODULE_1__["default"].TRANSITION_END, callback).emulateTransitionEnd(backdropTransitionDuration);
       } else if (!this._isShown && this._backdrop) {
-        (0, _jquery.default)(this._backdrop).removeClass(ClassName.SHOW);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._backdrop).removeClass(ClassName.SHOW);
 
         var callbackRemove = function callbackRemove() {
-          _this8._removeBackdrop();
+          _this9._removeBackdrop();
 
           if (callback) {
             callback();
           }
         };
 
-        if ((0, _jquery.default)(this._element).hasClass(ClassName.FADE)) {
-          var _backdropTransitionDuration = _util.default.getTransitionDurationFromElement(this._backdrop);
+        if (jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).hasClass(ClassName.FADE)) {
+          var _backdropTransitionDuration = _util__WEBPACK_IMPORTED_MODULE_1__["default"].getTransitionDurationFromElement(this._backdrop);
 
-          (0, _jquery.default)(this._backdrop).one(_util.default.TRANSITION_END, callbackRemove).emulateTransitionEnd(_backdropTransitionDuration);
+          jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._backdrop).one(_util__WEBPACK_IMPORTED_MODULE_1__["default"].TRANSITION_END, callbackRemove).emulateTransitionEnd(_backdropTransitionDuration);
         } else {
           callbackRemove();
         }
@@ -4280,7 +4695,7 @@ function () {
   }, {
     key: "_setScrollbar",
     value: function _setScrollbar() {
-      var _this9 = this;
+      var _this10 = this;
 
       if (this._isBodyOverflowing) {
         // Note: DOMNode.style.paddingRight returns the actual value or '' if not set
@@ -4288,47 +4703,47 @@ function () {
         var fixedContent = [].slice.call(document.querySelectorAll(Selector.FIXED_CONTENT));
         var stickyContent = [].slice.call(document.querySelectorAll(Selector.STICKY_CONTENT)); // Adjust fixed content padding
 
-        (0, _jquery.default)(fixedContent).each(function (index, element) {
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(fixedContent).each(function (index, element) {
           var actualPadding = element.style.paddingRight;
-          var calculatedPadding = (0, _jquery.default)(element).css('padding-right');
-          (0, _jquery.default)(element).data('padding-right', actualPadding).css('padding-right', "".concat(parseFloat(calculatedPadding) + _this9._scrollbarWidth, "px"));
+          var calculatedPadding = jquery__WEBPACK_IMPORTED_MODULE_0___default()(element).css('padding-right');
+          jquery__WEBPACK_IMPORTED_MODULE_0___default()(element).data('padding-right', actualPadding).css('padding-right', "".concat(parseFloat(calculatedPadding) + _this10._scrollbarWidth, "px"));
         }); // Adjust sticky content margin
 
-        (0, _jquery.default)(stickyContent).each(function (index, element) {
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(stickyContent).each(function (index, element) {
           var actualMargin = element.style.marginRight;
-          var calculatedMargin = (0, _jquery.default)(element).css('margin-right');
-          (0, _jquery.default)(element).data('margin-right', actualMargin).css('margin-right', "".concat(parseFloat(calculatedMargin) - _this9._scrollbarWidth, "px"));
+          var calculatedMargin = jquery__WEBPACK_IMPORTED_MODULE_0___default()(element).css('margin-right');
+          jquery__WEBPACK_IMPORTED_MODULE_0___default()(element).data('margin-right', actualMargin).css('margin-right', "".concat(parseFloat(calculatedMargin) - _this10._scrollbarWidth, "px"));
         }); // Adjust body padding
 
         var actualPadding = document.body.style.paddingRight;
-        var calculatedPadding = (0, _jquery.default)(document.body).css('padding-right');
-        (0, _jquery.default)(document.body).data('padding-right', actualPadding).css('padding-right', "".concat(parseFloat(calculatedPadding) + this._scrollbarWidth, "px"));
+        var calculatedPadding = jquery__WEBPACK_IMPORTED_MODULE_0___default()(document.body).css('padding-right');
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(document.body).data('padding-right', actualPadding).css('padding-right', "".concat(parseFloat(calculatedPadding) + this._scrollbarWidth, "px"));
       }
 
-      (0, _jquery.default)(document.body).addClass(ClassName.OPEN);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(document.body).addClass(ClassName.OPEN);
     }
   }, {
     key: "_resetScrollbar",
     value: function _resetScrollbar() {
       // Restore fixed content padding
       var fixedContent = [].slice.call(document.querySelectorAll(Selector.FIXED_CONTENT));
-      (0, _jquery.default)(fixedContent).each(function (index, element) {
-        var padding = (0, _jquery.default)(element).data('padding-right');
-        (0, _jquery.default)(element).removeData('padding-right');
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(fixedContent).each(function (index, element) {
+        var padding = jquery__WEBPACK_IMPORTED_MODULE_0___default()(element).data('padding-right');
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(element).removeData('padding-right');
         element.style.paddingRight = padding ? padding : '';
       }); // Restore sticky content
 
       var elements = [].slice.call(document.querySelectorAll("".concat(Selector.STICKY_CONTENT)));
-      (0, _jquery.default)(elements).each(function (index, element) {
-        var margin = (0, _jquery.default)(element).data('margin-right');
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(elements).each(function (index, element) {
+        var margin = jquery__WEBPACK_IMPORTED_MODULE_0___default()(element).data('margin-right');
 
         if (typeof margin !== 'undefined') {
-          (0, _jquery.default)(element).css('margin-right', margin).removeData('margin-right');
+          jquery__WEBPACK_IMPORTED_MODULE_0___default()(element).css('margin-right', margin).removeData('margin-right');
         }
       }); // Restore body padding
 
-      var padding = (0, _jquery.default)(document.body).data('padding-right');
-      (0, _jquery.default)(document.body).removeData('padding-right');
+      var padding = jquery__WEBPACK_IMPORTED_MODULE_0___default()(document.body).data('padding-right');
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(document.body).removeData('padding-right');
       document.body.style.paddingRight = padding ? padding : '';
     }
   }, {
@@ -4347,13 +4762,13 @@ function () {
     key: "_jQueryInterface",
     value: function _jQueryInterface(config, relatedTarget) {
       return this.each(function () {
-        var data = (0, _jquery.default)(this).data(DATA_KEY);
+        var data = jquery__WEBPACK_IMPORTED_MODULE_0___default()(this).data(DATA_KEY);
 
-        var _config = _objectSpread({}, Default, (0, _jquery.default)(this).data(), _typeof(config) === 'object' && config ? config : {});
+        var _config = _objectSpread({}, Default, {}, jquery__WEBPACK_IMPORTED_MODULE_0___default()(this).data(), {}, _typeof(config) === 'object' && config ? config : {});
 
         if (!data) {
           data = new Modal(this, _config);
-          (0, _jquery.default)(this).data(DATA_KEY, data);
+          jquery__WEBPACK_IMPORTED_MODULE_0___default()(this).data(DATA_KEY, data);
         }
 
         if (typeof config === 'string') {
@@ -4388,37 +4803,36 @@ function () {
  */
 
 
-(0, _jquery.default)(document).on(Event.CLICK_DATA_API, Selector.DATA_TOGGLE, function (event) {
-  var _this10 = this;
+jquery__WEBPACK_IMPORTED_MODULE_0___default()(document).on(Event.CLICK_DATA_API, Selector.DATA_TOGGLE, function (event) {
+  var _this11 = this;
 
   var target;
-
-  var selector = _util.default.getSelectorFromElement(this);
+  var selector = _util__WEBPACK_IMPORTED_MODULE_1__["default"].getSelectorFromElement(this);
 
   if (selector) {
     target = document.querySelector(selector);
   }
 
-  var config = (0, _jquery.default)(target).data(DATA_KEY) ? 'toggle' : _objectSpread({}, (0, _jquery.default)(target).data(), (0, _jquery.default)(this).data());
+  var config = jquery__WEBPACK_IMPORTED_MODULE_0___default()(target).data(DATA_KEY) ? 'toggle' : _objectSpread({}, jquery__WEBPACK_IMPORTED_MODULE_0___default()(target).data(), {}, jquery__WEBPACK_IMPORTED_MODULE_0___default()(this).data());
 
   if (this.tagName === 'A' || this.tagName === 'AREA') {
     event.preventDefault();
   }
 
-  var $target = (0, _jquery.default)(target).one(Event.SHOW, function (showEvent) {
+  var $target = jquery__WEBPACK_IMPORTED_MODULE_0___default()(target).one(Event.SHOW, function (showEvent) {
     if (showEvent.isDefaultPrevented()) {
       // Only register focus restorer if modal will actually get shown
       return;
     }
 
     $target.one(Event.HIDDEN, function () {
-      if ((0, _jquery.default)(_this10).is(':visible')) {
-        _this10.focus();
+      if (jquery__WEBPACK_IMPORTED_MODULE_0___default()(_this11).is(':visible')) {
+        _this11.focus();
       }
     });
   });
 
-  Modal._jQueryInterface.call((0, _jquery.default)(target), config, this);
+  Modal._jQueryInterface.call(jquery__WEBPACK_IMPORTED_MODULE_0___default()(target), config, this);
 });
 /**
  * ------------------------------------------------------------------------
@@ -4426,16 +4840,15 @@ function () {
  * ------------------------------------------------------------------------
  */
 
-_jquery.default.fn[NAME] = Modal._jQueryInterface;
-_jquery.default.fn[NAME].Constructor = Modal;
+jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME] = Modal._jQueryInterface;
+jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME].Constructor = Modal;
 
-_jquery.default.fn[NAME].noConflict = function () {
-  _jquery.default.fn[NAME] = JQUERY_NO_CONFLICT;
+jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME].noConflict = function () {
+  jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME] = JQUERY_NO_CONFLICT;
   return Modal._jQueryInterface;
 };
 
-var _default = Modal;
-exports.default = _default;
+/* harmony default export */ __webpack_exports__["default"] = (Modal);
 
 /***/ }),
 
@@ -4443,26 +4856,19 @@ exports.default = _default;
 /*!****************************************************!*\
   !*** ./node_modules/bootstrap/js/src/scrollspy.js ***!
   \****************************************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
+/*! exports provided: default */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = void 0;
-
-var _jquery = _interopRequireDefault(__webpack_require__(/*! jquery */ "./node_modules/jquery/dist/jquery.js"));
-
-var _util = _interopRequireDefault(__webpack_require__(/*! ./util */ "./node_modules/bootstrap/js/src/util.js"));
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
+__webpack_require__.r(__webpack_exports__);
+/* harmony import */ var jquery__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! jquery */ "./node_modules/jquery/dist/jquery.js");
+/* harmony import */ var jquery__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(jquery__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _util__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./util */ "./node_modules/bootstrap/js/src/util.js");
 function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof = function _typeof(obj) { return typeof obj; }; } else { _typeof = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof(obj); }
 
-function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i] != null ? arguments[i] : {}; var ownKeys = Object.keys(source); if (typeof Object.getOwnPropertySymbols === 'function') { ownKeys = ownKeys.concat(Object.getOwnPropertySymbols(source).filter(function (sym) { return Object.getOwnPropertyDescriptor(source, sym).enumerable; })); } ownKeys.forEach(function (key) { _defineProperty(target, key, source[key]); }); } return target; }
+function ownKeys(object, enumerableOnly) { var keys = Object.keys(object); if (Object.getOwnPropertySymbols) { var symbols = Object.getOwnPropertySymbols(object); if (enumerableOnly) symbols = symbols.filter(function (sym) { return Object.getOwnPropertyDescriptor(object, sym).enumerable; }); keys.push.apply(keys, symbols); } return keys; }
+
+function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i] != null ? arguments[i] : {}; if (i % 2) { ownKeys(Object(source), true).forEach(function (key) { _defineProperty(target, key, source[key]); }); } else if (Object.getOwnPropertyDescriptors) { Object.defineProperties(target, Object.getOwnPropertyDescriptors(source)); } else { ownKeys(Object(source)).forEach(function (key) { Object.defineProperty(target, key, Object.getOwnPropertyDescriptor(source, key)); }); } } return target; }
 
 function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
 
@@ -4473,16 +4879,25 @@ function _defineProperties(target, props) { for (var i = 0; i < props.length; i+
 function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _defineProperties(Constructor.prototype, protoProps); if (staticProps) _defineProperties(Constructor, staticProps); return Constructor; }
 
 /**
+ * --------------------------------------------------------------------------
+ * Bootstrap (v4.4.1): scrollspy.js
+ * Licensed under MIT (https://github.com/twbs/bootstrap/blob/master/LICENSE)
+ * --------------------------------------------------------------------------
+ */
+
+
+/**
  * ------------------------------------------------------------------------
  * Constants
  * ------------------------------------------------------------------------
  */
+
 var NAME = 'scrollspy';
-var VERSION = '4.3.1';
+var VERSION = '4.4.1';
 var DATA_KEY = 'bs.scrollspy';
 var EVENT_KEY = ".".concat(DATA_KEY);
 var DATA_API_KEY = '.data-api';
-var JQUERY_NO_CONFLICT = _jquery.default.fn[NAME];
+var JQUERY_NO_CONFLICT = jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME];
 var Default = {
   offset: 10,
   method: 'auto',
@@ -4517,13 +4932,12 @@ var Selector = {
 var OffsetMethod = {
   OFFSET: 'offset',
   POSITION: 'position'
-  /**
-   * ------------------------------------------------------------------------
-   * Class Definition
-   * ------------------------------------------------------------------------
-   */
-
 };
+/**
+ * ------------------------------------------------------------------------
+ * Class Definition
+ * ------------------------------------------------------------------------
+ */
 
 var ScrollSpy =
 /*#__PURE__*/
@@ -4541,7 +4955,7 @@ function () {
     this._targets = [];
     this._activeTarget = null;
     this._scrollHeight = 0;
-    (0, _jquery.default)(this._scrollElement).on(Event.SCROLL, function (event) {
+    jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._scrollElement).on(Event.SCROLL, function (event) {
       return _this._process(event);
     });
     this.refresh();
@@ -4565,8 +4979,7 @@ function () {
       var targets = [].slice.call(document.querySelectorAll(this._selector));
       targets.map(function (element) {
         var target;
-
-        var targetSelector = _util.default.getSelectorFromElement(element);
+        var targetSelector = _util__WEBPACK_IMPORTED_MODULE_1__["default"].getSelectorFromElement(element);
 
         if (targetSelector) {
           target = document.querySelector(targetSelector);
@@ -4577,7 +4990,7 @@ function () {
 
           if (targetBCR.width || targetBCR.height) {
             // TODO (fat): remove sketch reliance on jQuery position/offset
-            return [(0, _jquery.default)(target)[offsetMethod]().top + offsetBase, targetSelector];
+            return [jquery__WEBPACK_IMPORTED_MODULE_0___default()(target)[offsetMethod]().top + offsetBase, targetSelector];
           }
         }
 
@@ -4595,9 +5008,8 @@ function () {
   }, {
     key: "dispose",
     value: function dispose() {
-      _jquery.default.removeData(this._element, DATA_KEY);
-
-      (0, _jquery.default)(this._scrollElement).off(EVENT_KEY);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default.a.removeData(this._element, DATA_KEY);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._scrollElement).off(EVENT_KEY);
       this._element = null;
       this._scrollElement = null;
       this._config = null;
@@ -4611,21 +5023,20 @@ function () {
   }, {
     key: "_getConfig",
     value: function _getConfig(config) {
-      config = _objectSpread({}, Default, _typeof(config) === 'object' && config ? config : {});
+      config = _objectSpread({}, Default, {}, _typeof(config) === 'object' && config ? config : {});
 
       if (typeof config.target !== 'string') {
-        var id = (0, _jquery.default)(config.target).attr('id');
+        var id = jquery__WEBPACK_IMPORTED_MODULE_0___default()(config.target).attr('id');
 
         if (!id) {
-          id = _util.default.getUID(NAME);
-          (0, _jquery.default)(config.target).attr('id', id);
+          id = _util__WEBPACK_IMPORTED_MODULE_1__["default"].getUID(NAME);
+          jquery__WEBPACK_IMPORTED_MODULE_0___default()(config.target).attr('id', id);
         }
 
         config.target = "#".concat(id);
       }
 
-      _util.default.typeCheckConfig(NAME, config, DefaultType);
-
+      _util__WEBPACK_IMPORTED_MODULE_1__["default"].typeCheckConfig(NAME, config, DefaultType);
       return config;
     }
   }, {
@@ -4695,7 +5106,7 @@ function () {
         return "".concat(selector, "[data-target=\"").concat(target, "\"],").concat(selector, "[href=\"").concat(target, "\"]");
       });
 
-      var $link = (0, _jquery.default)([].slice.call(document.querySelectorAll(queries.join(','))));
+      var $link = jquery__WEBPACK_IMPORTED_MODULE_0___default()([].slice.call(document.querySelectorAll(queries.join(','))));
 
       if ($link.hasClass(ClassName.DROPDOWN_ITEM)) {
         $link.closest(Selector.DROPDOWN).find(Selector.DROPDOWN_TOGGLE).addClass(ClassName.ACTIVE);
@@ -4710,7 +5121,7 @@ function () {
         $link.parents(Selector.NAV_LIST_GROUP).prev(Selector.NAV_ITEMS).children(Selector.NAV_LINKS).addClass(ClassName.ACTIVE);
       }
 
-      (0, _jquery.default)(this._scrollElement).trigger(Event.ACTIVATE, {
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._scrollElement).trigger(Event.ACTIVATE, {
         relatedTarget: target
       });
     }
@@ -4728,13 +5139,13 @@ function () {
     key: "_jQueryInterface",
     value: function _jQueryInterface(config) {
       return this.each(function () {
-        var data = (0, _jquery.default)(this).data(DATA_KEY);
+        var data = jquery__WEBPACK_IMPORTED_MODULE_0___default()(this).data(DATA_KEY);
 
         var _config = _typeof(config) === 'object' && config;
 
         if (!data) {
           data = new ScrollSpy(this, _config);
-          (0, _jquery.default)(this).data(DATA_KEY, data);
+          jquery__WEBPACK_IMPORTED_MODULE_0___default()(this).data(DATA_KEY, data);
         }
 
         if (typeof config === 'string') {
@@ -4767,12 +5178,12 @@ function () {
  */
 
 
-(0, _jquery.default)(window).on(Event.LOAD_DATA_API, function () {
+jquery__WEBPACK_IMPORTED_MODULE_0___default()(window).on(Event.LOAD_DATA_API, function () {
   var scrollSpys = [].slice.call(document.querySelectorAll(Selector.DATA_SPY));
   var scrollSpysLength = scrollSpys.length;
 
   for (var i = scrollSpysLength; i--;) {
-    var $spy = (0, _jquery.default)(scrollSpys[i]);
+    var $spy = jquery__WEBPACK_IMPORTED_MODULE_0___default()(scrollSpys[i]);
 
     ScrollSpy._jQueryInterface.call($spy, $spy.data());
   }
@@ -4783,16 +5194,15 @@ function () {
  * ------------------------------------------------------------------------
  */
 
-_jquery.default.fn[NAME] = ScrollSpy._jQueryInterface;
-_jquery.default.fn[NAME].Constructor = ScrollSpy;
+jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME] = ScrollSpy._jQueryInterface;
+jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME].Constructor = ScrollSpy;
 
-_jquery.default.fn[NAME].noConflict = function () {
-  _jquery.default.fn[NAME] = JQUERY_NO_CONFLICT;
+jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME].noConflict = function () {
+  jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME] = JQUERY_NO_CONFLICT;
   return ScrollSpy._jQueryInterface;
 };
 
-var _default = ScrollSpy;
-exports.default = _default;
+/* harmony default export */ __webpack_exports__["default"] = (ScrollSpy);
 
 /***/ }),
 
@@ -4800,23 +5210,14 @@ exports.default = _default;
 /*!**********************************************!*\
   !*** ./node_modules/bootstrap/js/src/tab.js ***!
   \**********************************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
+/*! exports provided: default */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = void 0;
-
-var _jquery = _interopRequireDefault(__webpack_require__(/*! jquery */ "./node_modules/jquery/dist/jquery.js"));
-
-var _util = _interopRequireDefault(__webpack_require__(/*! ./util */ "./node_modules/bootstrap/js/src/util.js"));
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
+__webpack_require__.r(__webpack_exports__);
+/* harmony import */ var jquery__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! jquery */ "./node_modules/jquery/dist/jquery.js");
+/* harmony import */ var jquery__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(jquery__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _util__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./util */ "./node_modules/bootstrap/js/src/util.js");
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
 function _defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } }
@@ -4824,16 +5225,25 @@ function _defineProperties(target, props) { for (var i = 0; i < props.length; i+
 function _createClass(Constructor, protoProps, staticProps) { if (protoProps) _defineProperties(Constructor.prototype, protoProps); if (staticProps) _defineProperties(Constructor, staticProps); return Constructor; }
 
 /**
+ * --------------------------------------------------------------------------
+ * Bootstrap (v4.4.1): tab.js
+ * Licensed under MIT (https://github.com/twbs/bootstrap/blob/master/LICENSE)
+ * --------------------------------------------------------------------------
+ */
+
+
+/**
  * ------------------------------------------------------------------------
  * Constants
  * ------------------------------------------------------------------------
  */
+
 var NAME = 'tab';
-var VERSION = '4.3.1';
+var VERSION = '4.4.1';
 var DATA_KEY = 'bs.tab';
 var EVENT_KEY = ".".concat(DATA_KEY);
 var DATA_API_KEY = '.data-api';
-var JQUERY_NO_CONFLICT = _jquery.default.fn[NAME];
+var JQUERY_NO_CONFLICT = jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME];
 var Event = {
   HIDE: "hide".concat(EVENT_KEY),
   HIDDEN: "hidden".concat(EVENT_KEY),
@@ -4856,13 +5266,12 @@ var Selector = {
   DATA_TOGGLE: '[data-toggle="tab"], [data-toggle="pill"], [data-toggle="list"]',
   DROPDOWN_TOGGLE: '.dropdown-toggle',
   DROPDOWN_ACTIVE_CHILD: '> .dropdown-menu .active'
-  /**
-   * ------------------------------------------------------------------------
-   * Class Definition
-   * ------------------------------------------------------------------------
-   */
-
 };
+/**
+ * ------------------------------------------------------------------------
+ * Class Definition
+ * ------------------------------------------------------------------------
+ */
 
 var Tab =
 /*#__PURE__*/
@@ -4880,35 +5289,33 @@ function () {
     value: function show() {
       var _this = this;
 
-      if (this._element.parentNode && this._element.parentNode.nodeType === Node.ELEMENT_NODE && (0, _jquery.default)(this._element).hasClass(ClassName.ACTIVE) || (0, _jquery.default)(this._element).hasClass(ClassName.DISABLED)) {
+      if (this._element.parentNode && this._element.parentNode.nodeType === Node.ELEMENT_NODE && jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).hasClass(ClassName.ACTIVE) || jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).hasClass(ClassName.DISABLED)) {
         return;
       }
 
       var target;
       var previous;
-      var listElement = (0, _jquery.default)(this._element).closest(Selector.NAV_LIST_GROUP)[0];
-
-      var selector = _util.default.getSelectorFromElement(this._element);
+      var listElement = jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).closest(Selector.NAV_LIST_GROUP)[0];
+      var selector = _util__WEBPACK_IMPORTED_MODULE_1__["default"].getSelectorFromElement(this._element);
 
       if (listElement) {
         var itemSelector = listElement.nodeName === 'UL' || listElement.nodeName === 'OL' ? Selector.ACTIVE_UL : Selector.ACTIVE;
-        previous = _jquery.default.makeArray((0, _jquery.default)(listElement).find(itemSelector));
+        previous = jquery__WEBPACK_IMPORTED_MODULE_0___default.a.makeArray(jquery__WEBPACK_IMPORTED_MODULE_0___default()(listElement).find(itemSelector));
         previous = previous[previous.length - 1];
       }
 
-      var hideEvent = _jquery.default.Event(Event.HIDE, {
+      var hideEvent = jquery__WEBPACK_IMPORTED_MODULE_0___default.a.Event(Event.HIDE, {
         relatedTarget: this._element
       });
-
-      var showEvent = _jquery.default.Event(Event.SHOW, {
+      var showEvent = jquery__WEBPACK_IMPORTED_MODULE_0___default.a.Event(Event.SHOW, {
         relatedTarget: previous
       });
 
       if (previous) {
-        (0, _jquery.default)(previous).trigger(hideEvent);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(previous).trigger(hideEvent);
       }
 
-      (0, _jquery.default)(this._element).trigger(showEvent);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(this._element).trigger(showEvent);
 
       if (showEvent.isDefaultPrevented() || hideEvent.isDefaultPrevented()) {
         return;
@@ -4921,16 +5328,14 @@ function () {
       this._activate(this._element, listElement);
 
       var complete = function complete() {
-        var hiddenEvent = _jquery.default.Event(Event.HIDDEN, {
+        var hiddenEvent = jquery__WEBPACK_IMPORTED_MODULE_0___default.a.Event(Event.HIDDEN, {
           relatedTarget: _this._element
         });
-
-        var shownEvent = _jquery.default.Event(Event.SHOWN, {
+        var shownEvent = jquery__WEBPACK_IMPORTED_MODULE_0___default.a.Event(Event.SHOWN, {
           relatedTarget: previous
         });
-
-        (0, _jquery.default)(previous).trigger(hiddenEvent);
-        (0, _jquery.default)(_this._element).trigger(shownEvent);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(previous).trigger(hiddenEvent);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(_this._element).trigger(shownEvent);
       };
 
       if (target) {
@@ -4942,8 +5347,7 @@ function () {
   }, {
     key: "dispose",
     value: function dispose() {
-      _jquery.default.removeData(this._element, DATA_KEY);
-
+      jquery__WEBPACK_IMPORTED_MODULE_0___default.a.removeData(this._element, DATA_KEY);
       this._element = null;
     } // Private
 
@@ -4952,18 +5356,17 @@ function () {
     value: function _activate(element, container, callback) {
       var _this2 = this;
 
-      var activeElements = container && (container.nodeName === 'UL' || container.nodeName === 'OL') ? (0, _jquery.default)(container).find(Selector.ACTIVE_UL) : (0, _jquery.default)(container).children(Selector.ACTIVE);
+      var activeElements = container && (container.nodeName === 'UL' || container.nodeName === 'OL') ? jquery__WEBPACK_IMPORTED_MODULE_0___default()(container).find(Selector.ACTIVE_UL) : jquery__WEBPACK_IMPORTED_MODULE_0___default()(container).children(Selector.ACTIVE);
       var active = activeElements[0];
-      var isTransitioning = callback && active && (0, _jquery.default)(active).hasClass(ClassName.FADE);
+      var isTransitioning = callback && active && jquery__WEBPACK_IMPORTED_MODULE_0___default()(active).hasClass(ClassName.FADE);
 
       var complete = function complete() {
         return _this2._transitionComplete(element, active, callback);
       };
 
       if (active && isTransitioning) {
-        var transitionDuration = _util.default.getTransitionDurationFromElement(active);
-
-        (0, _jquery.default)(active).removeClass(ClassName.SHOW).one(_util.default.TRANSITION_END, complete).emulateTransitionEnd(transitionDuration);
+        var transitionDuration = _util__WEBPACK_IMPORTED_MODULE_1__["default"].getTransitionDurationFromElement(active);
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(active).removeClass(ClassName.SHOW).one(_util__WEBPACK_IMPORTED_MODULE_1__["default"].TRANSITION_END, complete).emulateTransitionEnd(transitionDuration);
       } else {
         complete();
       }
@@ -4972,11 +5375,11 @@ function () {
     key: "_transitionComplete",
     value: function _transitionComplete(element, active, callback) {
       if (active) {
-        (0, _jquery.default)(active).removeClass(ClassName.ACTIVE);
-        var dropdownChild = (0, _jquery.default)(active.parentNode).find(Selector.DROPDOWN_ACTIVE_CHILD)[0];
+        jquery__WEBPACK_IMPORTED_MODULE_0___default()(active).removeClass(ClassName.ACTIVE);
+        var dropdownChild = jquery__WEBPACK_IMPORTED_MODULE_0___default()(active.parentNode).find(Selector.DROPDOWN_ACTIVE_CHILD)[0];
 
         if (dropdownChild) {
-          (0, _jquery.default)(dropdownChild).removeClass(ClassName.ACTIVE);
+          jquery__WEBPACK_IMPORTED_MODULE_0___default()(dropdownChild).removeClass(ClassName.ACTIVE);
         }
 
         if (active.getAttribute('role') === 'tab') {
@@ -4984,24 +5387,24 @@ function () {
         }
       }
 
-      (0, _jquery.default)(element).addClass(ClassName.ACTIVE);
+      jquery__WEBPACK_IMPORTED_MODULE_0___default()(element).addClass(ClassName.ACTIVE);
 
       if (element.getAttribute('role') === 'tab') {
         element.setAttribute('aria-selected', true);
       }
 
-      _util.default.reflow(element);
+      _util__WEBPACK_IMPORTED_MODULE_1__["default"].reflow(element);
 
       if (element.classList.contains(ClassName.FADE)) {
         element.classList.add(ClassName.SHOW);
       }
 
-      if (element.parentNode && (0, _jquery.default)(element.parentNode).hasClass(ClassName.DROPDOWN_MENU)) {
-        var dropdownElement = (0, _jquery.default)(element).closest(Selector.DROPDOWN)[0];
+      if (element.parentNode && jquery__WEBPACK_IMPORTED_MODULE_0___default()(element.parentNode).hasClass(ClassName.DROPDOWN_MENU)) {
+        var dropdownElement = jquery__WEBPACK_IMPORTED_MODULE_0___default()(element).closest(Selector.DROPDOWN)[0];
 
         if (dropdownElement) {
           var dropdownToggleList = [].slice.call(dropdownElement.querySelectorAll(Selector.DROPDOWN_TOGGLE));
-          (0, _jquery.default)(dropdownToggleList).addClass(ClassName.ACTIVE);
+          jquery__WEBPACK_IMPORTED_MODULE_0___default()(dropdownToggleList).addClass(ClassName.ACTIVE);
         }
 
         element.setAttribute('aria-expanded', true);
@@ -5016,7 +5419,7 @@ function () {
     key: "_jQueryInterface",
     value: function _jQueryInterface(config) {
       return this.each(function () {
-        var $this = (0, _jquery.default)(this);
+        var $this = jquery__WEBPACK_IMPORTED_MODULE_0___default()(this);
         var data = $this.data(DATA_KEY);
 
         if (!data) {
@@ -5049,10 +5452,10 @@ function () {
  */
 
 
-(0, _jquery.default)(document).on(Event.CLICK_DATA_API, Selector.DATA_TOGGLE, function (event) {
+jquery__WEBPACK_IMPORTED_MODULE_0___default()(document).on(Event.CLICK_DATA_API, Selector.DATA_TOGGLE, function (event) {
   event.preventDefault();
 
-  Tab._jQueryInterface.call((0, _jquery.default)(this), 'show');
+  Tab._jQueryInterface.call(jquery__WEBPACK_IMPORTED_MODULE_0___default()(this), 'show');
 });
 /**
  * ------------------------------------------------------------------------
@@ -5060,16 +5463,15 @@ function () {
  * ------------------------------------------------------------------------
  */
 
-_jquery.default.fn[NAME] = Tab._jQueryInterface;
-_jquery.default.fn[NAME].Constructor = Tab;
+jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME] = Tab._jQueryInterface;
+jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME].Constructor = Tab;
 
-_jquery.default.fn[NAME].noConflict = function () {
-  _jquery.default.fn[NAME] = JQUERY_NO_CONFLICT;
+jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME].noConflict = function () {
+  jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn[NAME] = JQUERY_NO_CONFLICT;
   return Tab._jQueryInterface;
 };
 
-var _default = Tab;
-exports.default = _default;
+/* harmony default export */ __webpack_exports__["default"] = (Tab);
 
 /***/ }),
 
@@ -5077,24 +5479,16 @@ exports.default = _default;
 /*!***********************************************!*\
   !*** ./node_modules/bootstrap/js/src/util.js ***!
   \***********************************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
+/*! exports provided: default */
+/***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
-
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = void 0;
-
-var _jquery = _interopRequireDefault(__webpack_require__(/*! jquery */ "./node_modules/jquery/dist/jquery.js"));
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
+__webpack_require__.r(__webpack_exports__);
+/* harmony import */ var jquery__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! jquery */ "./node_modules/jquery/dist/jquery.js");
+/* harmony import */ var jquery__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(jquery__WEBPACK_IMPORTED_MODULE_0__);
 /**
  * --------------------------------------------------------------------------
- * Bootstrap (v4.3.1): util.js
+ * Bootstrap (v4.4.1): util.js
  * Licensed under MIT (https://github.com/twbs/bootstrap/blob/master/LICENSE)
  * --------------------------------------------------------------------------
  */
@@ -5104,6 +5498,7 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
  * Private TransitionEnd Helpers
  * ------------------------------------------------------------------------
  */
+
 var TRANSITION_END = 'transitionend';
 var MAX_UID = 1000000;
 var MILLISECONDS_MULTIPLIER = 1000; // Shoutout AngusCroll (https://goo.gl/pxwQGp)
@@ -5117,7 +5512,7 @@ function getSpecialTransitionEndEvent() {
     bindType: TRANSITION_END,
     delegateType: TRANSITION_END,
     handle: function handle(event) {
-      if ((0, _jquery.default)(event.target).is(this)) {
+      if (jquery__WEBPACK_IMPORTED_MODULE_0___default()(event.target).is(this)) {
         return event.handleObj.handler.apply(this, arguments); // eslint-disable-line prefer-rest-params
       }
 
@@ -5130,7 +5525,7 @@ function transitionEndEmulator(duration) {
   var _this = this;
 
   var called = false;
-  (0, _jquery.default)(this).one(Util.TRANSITION_END, function () {
+  jquery__WEBPACK_IMPORTED_MODULE_0___default()(this).one(Util.TRANSITION_END, function () {
     called = true;
   });
   setTimeout(function () {
@@ -5142,8 +5537,8 @@ function transitionEndEmulator(duration) {
 }
 
 function setTransitionEndSupport() {
-  _jquery.default.fn.emulateTransitionEnd = transitionEndEmulator;
-  _jquery.default.event.special[Util.TRANSITION_END] = getSpecialTransitionEndEvent();
+  jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn.emulateTransitionEnd = transitionEndEmulator;
+  jquery__WEBPACK_IMPORTED_MODULE_0___default.a.event.special[Util.TRANSITION_END] = getSpecialTransitionEndEvent();
 }
 /**
  * --------------------------------------------------------------------------
@@ -5182,8 +5577,8 @@ var Util = {
     } // Get transition-duration of the element
 
 
-    var transitionDuration = (0, _jquery.default)(element).css('transition-duration');
-    var transitionDelay = (0, _jquery.default)(element).css('transition-delay');
+    var transitionDuration = jquery__WEBPACK_IMPORTED_MODULE_0___default()(element).css('transition-duration');
+    var transitionDelay = jquery__WEBPACK_IMPORTED_MODULE_0___default()(element).css('transition-delay');
     var floatTransitionDuration = parseFloat(transitionDuration);
     var floatTransitionDelay = parseFloat(transitionDelay); // Return 0 if element or transition duration is not found
 
@@ -5200,7 +5595,7 @@ var Util = {
     return element.offsetHeight;
   },
   triggerTransitionEnd: function triggerTransitionEnd(element) {
-    (0, _jquery.default)(element).trigger(TRANSITION_END);
+    jquery__WEBPACK_IMPORTED_MODULE_0___default()(element).trigger(TRANSITION_END);
   },
   // TODO: Remove in v5
   supportsTransitionEnd: function supportsTransitionEnd() {
@@ -5243,11 +5638,27 @@ var Util = {
     }
 
     return Util.findShadowRoot(element.parentNode);
+  },
+  jQueryDetection: function jQueryDetection() {
+    if (typeof jquery__WEBPACK_IMPORTED_MODULE_0___default.a === 'undefined') {
+      throw new TypeError('Bootstrap\'s JavaScript requires jQuery. jQuery must be included before Bootstrap\'s JavaScript.');
+    }
+
+    var version = jquery__WEBPACK_IMPORTED_MODULE_0___default.a.fn.jquery.split(' ')[0].split('.');
+    var minMajor = 1;
+    var ltMajor = 2;
+    var minMinor = 9;
+    var minPatch = 1;
+    var maxMajor = 4;
+
+    if (version[0] < ltMajor && version[1] < minMinor || version[0] === minMajor && version[1] === minMinor && version[2] < minPatch || version[0] >= maxMajor) {
+      throw new Error('Bootstrap\'s JavaScript requires at least jQuery v1.9.1 but less than v4.0.0');
+    }
   }
 };
+Util.jQueryDetection();
 setTransitionEndSupport();
-var _default = Util;
-exports.default = _default;
+/* harmony default export */ __webpack_exports__["default"] = (Util);
 
 /***/ }),
 
@@ -5258,13 +5669,10 @@ exports.default = _default;
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
-"use strict";
-/* WEBPACK VAR INJECTION */(function(module) {var __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_DEFINE_RESULT__;
-
-function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof = function _typeof(obj) { return typeof obj; }; } else { _typeof = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof(obj); }
+/* WEBPACK VAR INJECTION */(function(module) {var __WEBPACK_AMD_DEFINE_ARRAY__, __WEBPACK_AMD_DEFINE_RESULT__;function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof = function _typeof(obj) { return typeof obj; }; } else { _typeof = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof(obj); }
 
 /*!
- * jQuery JavaScript Library v3.3.1
+ * jQuery JavaScript Library v3.4.1
  * https://jquery.com/
  *
  * Includes Sizzle.js
@@ -5274,7 +5682,7 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
  * Released under the MIT license
  * https://jquery.org/license
  *
- * Date: 2018-01-20T17:24Z
+ * Date: 2019-05-01T21:04Z
  */
 (function (global, factory) {
   "use strict";
@@ -5298,7 +5706,7 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
     factory(global);
   } // Pass this if window is not defined yet
 
-})(typeof window !== "undefined" ? window : void 0, function (window, noGlobal) {
+})(typeof window !== "undefined" ? window : this, function (window, noGlobal) {
   // Edge <= 12 - 13+, Firefox <=18 - 45+, IE 10 - 11, Safari 5.1 - 9+, iOS 6 - 9.1
   // throw exceptions when non-strict code (e.g., ASP.NET 4.5) accesses strict mode
   // arguments.callee.caller (trac-13335). But as of jQuery 3.0 (2016), strict mode should be common
@@ -5334,19 +5742,33 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
   var preservedScriptAttributes = {
     type: true,
     src: true,
+    nonce: true,
     noModule: true
   };
 
-  function DOMEval(code, doc, node) {
+  function DOMEval(code, node, doc) {
     doc = doc || document;
     var i,
+        val,
         script = doc.createElement("script");
     script.text = code;
 
     if (node) {
       for (i in preservedScriptAttributes) {
-        if (node[i]) {
-          script[i] = node[i];
+        // Support: Firefox 64+, Edge 18+
+        // Some browsers don't support the "nonce" property on scripts.
+        // On the other hand, just using `getAttribute` is not enough as
+        // the `nonce` attribute is reset to an empty string whenever it
+        // becomes browsing-context connected.
+        // See https://github.com/whatwg/html/issues/2369
+        // See https://html.spec.whatwg.org/#nonce-attributes
+        // The `node.getAttribute` check was added for the sake of
+        // `jQuery.globalEval` so that it can fake a nonce-containing node
+        // via an object.
+        val = node[i] || node.getAttribute && node.getAttribute(i);
+
+        if (val) {
+          script.setAttribute(i, val);
         }
       }
     }
@@ -5367,7 +5789,7 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
   // unguarded in another place, it seems safer to define global only for this module
 
 
-  var version = "3.3.1",
+  var version = "3.4.1",
       // Define a local copy of jQuery
   jQuery = function jQuery(selector, context) {
     // The jQuery object is actually just the init constructor 'enhanced'
@@ -5476,22 +5898,26 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
       if ((options = arguments[i]) != null) {
         // Extend the base object
         for (name in options) {
-          src = target[name];
-          copy = options[name]; // Prevent never-ending loop
+          copy = options[name]; // Prevent Object.prototype pollution
+          // Prevent never-ending loop
 
-          if (target === copy) {
+          if (name === "__proto__" || target === copy) {
             continue;
           } // Recurse if we're merging plain objects or arrays
 
 
           if (deep && copy && (jQuery.isPlainObject(copy) || (copyIsArray = Array.isArray(copy)))) {
-            if (copyIsArray) {
-              copyIsArray = false;
-              clone = src && Array.isArray(src) ? src : [];
-            } else {
-              clone = src && jQuery.isPlainObject(src) ? src : {};
-            } // Never move original objects, clone them
+            src = target[name]; // Ensure proper type for the source value
 
+            if (copyIsArray && !Array.isArray(src)) {
+              clone = [];
+            } else if (!copyIsArray && !jQuery.isPlainObject(src)) {
+              clone = {};
+            } else {
+              clone = src;
+            }
+
+            copyIsArray = false; // Never move original objects, clone them
 
             target[name] = jQuery.extend(deep, clone, copy); // Don't bring in undefined values
           } else if (copy !== undefined) {
@@ -5533,8 +5959,6 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
       return typeof Ctor === "function" && fnToString.call(Ctor) === ObjectFunctionString;
     },
     isEmptyObject: function isEmptyObject(obj) {
-      /* eslint-disable no-unused-vars */
-      // See https://github.com/eslint/eslint/issues/6125
       var name;
 
       for (name in obj) {
@@ -5544,8 +5968,10 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
       return true;
     },
     // Evaluates a script in a global context
-    globalEval: function globalEval(code) {
-      DOMEval(code);
+    globalEval: function globalEval(code, options) {
+      DOMEval(code, {
+        nonce: options && options.nonce
+      });
     },
     each: function each(obj, callback) {
       var length,
@@ -5686,14 +6112,14 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
 
   var Sizzle =
   /*!
-   * Sizzle CSS Selector Engine v2.3.3
+   * Sizzle CSS Selector Engine v2.3.4
    * https://sizzlejs.com/
    *
-   * Copyright jQuery Foundation and other contributors
+   * Copyright JS Foundation and other contributors
    * Released under the MIT license
-   * http://jquery.org/license
+   * https://js.foundation/
    *
-   * Date: 2016-08-08
+   * Date: 2019-04-08
    */
   function (window) {
     var i,
@@ -5724,6 +6150,7 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
         classCache = createCache(),
         tokenCache = createCache(),
         compilerCache = createCache(),
+        nonnativeSelectorCache = createCache(),
         sortOrder = function sortOrder(a, b) {
       if (a === b) {
         hasDuplicate = true;
@@ -5772,7 +6199,7 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
         rtrim = new RegExp("^" + whitespace + "+|((?:^|[^\\\\])(?:\\\\.)*)" + whitespace + "+$", "g"),
         rcomma = new RegExp("^" + whitespace + "*," + whitespace + "*"),
         rcombinators = new RegExp("^" + whitespace + "*([>+~]|" + whitespace + ")" + whitespace + "*"),
-        rattributeQuotes = new RegExp("=" + whitespace + "*([^\\]'\"]*?)" + whitespace + "*\\]", "g"),
+        rdescend = new RegExp(whitespace + "|>"),
         rpseudo = new RegExp(pseudos),
         ridentifier = new RegExp("^" + identifier + "$"),
         matchExpr = {
@@ -5787,6 +6214,7 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
       // We use this for POS matching in `select`
       "needsContext": new RegExp("^" + whitespace + "*[>+~]|:(even|odd|eq|gt|lt|nth|first|last)(?:\\(" + whitespace + "*((?:-\\d)?\\d*)" + whitespace + "*\\)|)(?=[^-]|$)", "i")
     },
+        rhtml = /HTML$/i,
         rinputs = /^(?:input|select|textarea|button)$/i,
         rheader = /^h\d$/i,
         rnative = /^[^{]+\{\s*\[native \w/,
@@ -5829,8 +6257,8 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
     unloadHandler = function unloadHandler() {
       setDocument();
     },
-        disabledAncestor = addCombinator(function (elem) {
-      return elem.disabled === true && ("form" in elem || "label" in elem);
+        inDisabledFieldset = addCombinator(function (elem) {
+      return elem.disabled === true && elem.nodeName.toLowerCase() === "fieldset";
     }, {
       dir: "parentNode",
       next: "legend"
@@ -5925,14 +6353,17 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
           } // Take advantage of querySelectorAll
 
 
-          if (support.qsa && !compilerCache[selector + " "] && (!rbuggyQSA || !rbuggyQSA.test(selector))) {
-            if (nodeType !== 1) {
-              newContext = context;
-              newSelector = selector; // qSA looks outside Element context, which is not what we want
-              // Thanks to Andrew Dupont for this workaround technique
-              // Support: IE <=8
-              // Exclude object elements
-            } else if (context.nodeName.toLowerCase() !== "object") {
+          if (support.qsa && !nonnativeSelectorCache[selector + " "] && (!rbuggyQSA || !rbuggyQSA.test(selector)) && ( // Support: IE 8 only
+          // Exclude object elements
+          nodeType !== 1 || context.nodeName.toLowerCase() !== "object")) {
+            newSelector = selector;
+            newContext = context; // qSA considers elements outside a scoping root when evaluating child or
+            // descendant combinators, which is not what we want.
+            // In such cases, we work around the behavior by prefixing every selector in the
+            // list with an ID selector referencing the scope context.
+            // Thanks to Andrew Dupont for this technique.
+
+            if (nodeType === 1 && rdescend.test(selector)) {
               // Capture the context ID, setting it first if necessary
               if (nid = context.getAttribute("id")) {
                 nid = nid.replace(rcssescape, fcssescape);
@@ -5953,14 +6384,14 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
               newContext = rsibling.test(selector) && testContext(context.parentNode) || context;
             }
 
-            if (newSelector) {
-              try {
-                push.apply(results, newContext.querySelectorAll(newSelector));
-                return results;
-              } catch (qsaError) {} finally {
-                if (nid === expando) {
-                  context.removeAttribute("id");
-                }
+            try {
+              push.apply(results, newContext.querySelectorAll(newSelector));
+              return results;
+            } catch (qsaError) {
+              nonnativeSelectorCache(selector, true);
+            } finally {
+              if (nid === expando) {
+                context.removeAttribute("id");
               }
             }
           }
@@ -6127,7 +6558,7 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
             return elem.isDisabled === disabled || // Where there is no isDisabled, check manually
 
             /* jshint -W018 */
-            elem.isDisabled !== !disabled && disabledAncestor(elem) === disabled;
+            elem.isDisabled !== !disabled && inDisabledFieldset(elem) === disabled;
           }
 
           return elem.disabled === disabled; // Try to winnow out elements that can't be disabled before trusting the disabled property.
@@ -6183,10 +6614,12 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
      */
 
     isXML = Sizzle.isXML = function (elem) {
-      // documentElement is verified for cases where it doesn't yet exist
-      // (such as loading iframes in IE - #4833)
-      var documentElement = elem && (elem.ownerDocument || elem).documentElement;
-      return documentElement ? documentElement.nodeName !== "HTML" : false;
+      var namespace = elem.namespaceURI,
+          docElem = (elem.ownerDocument || elem).documentElement; // Support: IE <=8
+      // Assume HTML when documentElement doesn't yet exist, such as inside loading iframes
+      // https://bugs.jquery.com/ticket/4833
+
+      return !rhtml.test(namespace || docElem && docElem.nodeName || "HTML");
     };
     /**
      * Sets document-related variables once based on the current document
@@ -6554,12 +6987,9 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
       // Set document vars if needed
       if ((elem.ownerDocument || elem) !== document) {
         setDocument(elem);
-      } // Make sure that attribute selectors are quoted
+      }
 
-
-      expr = expr.replace(rattributeQuotes, "='$1']");
-
-      if (support.matchesSelector && documentIsHTML && !compilerCache[expr + " "] && (!rbuggyMatches || !rbuggyMatches.test(expr)) && (!rbuggyQSA || !rbuggyQSA.test(expr))) {
+      if (support.matchesSelector && documentIsHTML && !nonnativeSelectorCache[expr + " "] && (!rbuggyMatches || !rbuggyMatches.test(expr)) && (!rbuggyQSA || !rbuggyQSA.test(expr))) {
         try {
           var ret = matches.call(elem, expr); // IE 9's matchesSelector returns false on disconnected nodes
 
@@ -6568,7 +6998,9 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
           elem.document && elem.document.nodeType !== 11) {
             return ret;
           }
-        } catch (e) {}
+        } catch (e) {
+          nonnativeSelectorCache(expr, true);
+        }
       }
 
       return Sizzle(expr, document, null, [elem]).length > 0;
@@ -6964,7 +7396,7 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
         "contains": markFunction(function (text) {
           text = text.replace(runescape, funescape);
           return function (elem) {
-            return (elem.textContent || elem.innerText || getText(elem)).indexOf(text) > -1;
+            return (elem.textContent || getText(elem)).indexOf(text) > -1;
           };
         }),
         // "Whether an element is represented by a :lang() selector
@@ -7086,7 +7518,7 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
           return matchIndexes;
         }),
         "lt": createPositionalPseudo(function (matchIndexes, length, argument) {
-          var i = argument < 0 ? argument + length : argument;
+          var i = argument < 0 ? argument + length : argument > length ? length : argument;
 
           for (; --i >= 0;) {
             matchIndexes.push(i);
@@ -8043,7 +8475,7 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
       return _siblings(elem.firstChild);
     },
     contents: function contents(elem) {
-      if (nodeName(elem, "iframe")) {
+      if (typeof elem.contentDocument !== "undefined") {
         return elem.contentDocument;
       } // Support: IE 9 - 11 only, iOS 7 only, Android Browser <=4.3 only
       // Treat the template element as a regular one in browsers that
@@ -8590,7 +9022,7 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
     readyList.then(fn) // Wrap jQuery.readyException in a function so that the lookup
     // happens at the time of error handling instead of callback
     // registration.
-    .catch(function (error) {
+    ["catch"](function (error) {
       jQuery.readyException(error);
     });
     return this;
@@ -9142,6 +9574,25 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
   var pnum = /[+-]?(?:\d*\.|)\d+(?:[eE][+-]?\d+|)/.source;
   var rcssNum = new RegExp("^(?:([+-])=|)(" + pnum + ")([a-z%]*)$", "i");
   var cssExpand = ["Top", "Right", "Bottom", "Left"];
+  var documentElement = document.documentElement;
+
+  var isAttached = function isAttached(elem) {
+    return jQuery.contains(elem.ownerDocument, elem);
+  },
+      composed = {
+    composed: true
+  }; // Support: IE 9 - 11+, Edge 12 - 18+, iOS 10.0 - 10.2 only
+  // Check attachment across shadow DOM boundaries when possible (gh-3504)
+  // Support: iOS 10.0-10.2 only
+  // Early iOS 10 versions support `attachShadow` but not `getRootNode`,
+  // leading to errors. We need to check for `getRootNode`.
+
+
+  if (documentElement.getRootNode) {
+    isAttached = function isAttached(elem) {
+      return jQuery.contains(elem.ownerDocument, elem) || elem.getRootNode(composed) === elem.ownerDocument;
+    };
+  }
 
   var isHiddenWithinTree = function isHiddenWithinTree(elem, el) {
     // isHiddenWithinTree might be called from jQuery#filter function;
@@ -9152,7 +9603,7 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
     // Support: Firefox <=43 - 45
     // Disconnected elements can have computed display: none, so first confirm that elem is
     // in the document.
-    jQuery.contains(elem.ownerDocument, elem) && jQuery.css(elem, "display") === "none";
+    isAttached(elem) && jQuery.css(elem, "display") === "none";
   };
 
   var swap = function swap(elem, options, callback, args) {
@@ -9186,7 +9637,7 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
         initial = currentValue(),
         unit = valueParts && valueParts[3] || (jQuery.cssNumber[prop] ? "" : "px"),
         // Starting value computation is required for potential unit mismatches
-    initialInUnit = (jQuery.cssNumber[prop] || unit !== "px" && +initial) && rcssNum.exec(jQuery.css(elem, prop));
+    initialInUnit = elem.nodeType && (jQuery.cssNumber[prop] || unit !== "px" && +initial) && rcssNum.exec(jQuery.css(elem, prop));
 
     if (initialInUnit && initialInUnit[3] !== unit) {
       // Support: Firefox <=54
@@ -9326,7 +9777,7 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
     }
   });
   var rcheckableType = /^(?:checkbox|radio)$/i;
-  var rtagName = /<([a-z][^\/\0>\x20\t\r\n\f]+)/i;
+  var rtagName = /<([a-z][^\/\0>\x20\t\r\n\f]*)/i;
   var rscriptType = /^$|^module$|\/(?:java|ecma)script/i; // We have to close these tags to support XHTML (#13200)
 
   var wrapMap = {
@@ -9383,7 +9834,7 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
         tmp,
         tag,
         wrap,
-        contains,
+        attached,
         j,
         fragment = context.createDocumentFragment(),
         nodes = [],
@@ -9439,11 +9890,11 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
         continue;
       }
 
-      contains = jQuery.contains(elem.ownerDocument, elem); // Append to fragment
+      attached = isAttached(elem); // Append to fragment
 
       tmp = getAll(fragment.appendChild(elem), "script"); // Preserve script evaluation history
 
-      if (contains) {
+      if (attached) {
         setGlobalEval(tmp);
       } // Capture executables
 
@@ -9483,7 +9934,6 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
     support.noCloneChecked = !!div.cloneNode(true).lastChild.defaultValue;
   })();
 
-  var documentElement = document.documentElement;
   var rkeyEvent = /^key/,
       rmouseEvent = /^(?:mouse|pointer|contextmenu|drag|drop)|click/,
       rtypenamespace = /^([^.]*)(?:\.(.+)|)/;
@@ -9494,8 +9944,19 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
 
   function returnFalse() {
     return false;
+  } // Support: IE <=9 - 11+
+  // focus() and blur() are asynchronous, except when they are no-op.
+  // So expect focus to be synchronous when the element is already active,
+  // and blur to be synchronous when the element is not already active.
+  // (focus and blur are always synchronous in other supported browsers,
+  // this just defines when we can count on it).
+
+
+  function expectSync(elem, type) {
+    return elem === safeActiveElement() === (type === "focus");
   } // Support: IE <=9 only
-  // See #13393 for more info
+  // Accessing document.activeElement can throw unexpectedly
+  // https://bugs.jquery.com/ticket/13393
 
 
   function safeActiveElement() {
@@ -9790,9 +10251,9 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
         j = 0;
 
         while ((handleObj = matched.handlers[j++]) && !event.isImmediatePropagationStopped()) {
-          // Triggered event must either 1) have no namespace, or 2) have namespace(s)
-          // a subset or equal to those in the bound event (both can have no namespace).
-          if (!event.rnamespace || event.rnamespace.test(handleObj.namespace)) {
+          // If the event is namespaced, then each handler is only invoked if it is
+          // specially universal or its namespaces are a superset of the event's.
+          if (!event.rnamespace || handleObj.namespace === false || event.rnamespace.test(handleObj.namespace)) {
             event.handleObj = handleObj;
             event.data = handleObj.data;
             ret = ((jQuery.event.special[handleObj.origType] || {}).handle || handleObj.handler).apply(matched.elem, args);
@@ -9906,36 +10367,38 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
         // Prevent triggered image.load events from bubbling to window.load
         noBubble: true
       },
-      focus: {
-        // Fire native event if possible so blur/focus sequence is correct
-        trigger: function trigger() {
-          if (this !== safeActiveElement() && this.focus) {
-            this.focus();
-            return false;
-          }
-        },
-        delegateType: "focusin"
-      },
-      blur: {
-        trigger: function trigger() {
-          if (this === safeActiveElement() && this.blur) {
-            this.blur();
-            return false;
-          }
-        },
-        delegateType: "focusout"
-      },
       click: {
-        // For checkbox, fire native event so checked state will be right
-        trigger: function trigger() {
-          if (this.type === "checkbox" && this.click && nodeName(this, "input")) {
-            this.click();
-            return false;
-          }
+        // Utilize native event to ensure correct state for checkable inputs
+        setup: function setup(data) {
+          // For mutual compressibility with _default, replace `this` access with a local var.
+          // `|| data` is dead code meant only to preserve the variable through minification.
+          var el = this || data; // Claim the first handler
+
+          if (rcheckableType.test(el.type) && el.click && nodeName(el, "input")) {
+            // dataPriv.set( el, "click", ... )
+            leverageNative(el, "click", returnTrue);
+          } // Return false to allow normal processing in the caller
+
+
+          return false;
         },
-        // For cross-browser consistency, don't fire native .click() on links
+        trigger: function trigger(data) {
+          // For mutual compressibility with _default, replace `this` access with a local var.
+          // `|| data` is dead code meant only to preserve the variable through minification.
+          var el = this || data; // Force setup before triggering a click
+
+          if (rcheckableType.test(el.type) && el.click && nodeName(el, "input")) {
+            leverageNative(el, "click");
+          } // Return non-false to allow normal event-path propagation
+
+
+          return true;
+        },
+        // For cross-browser consistency, suppress native .click() on links
+        // Also prevent it if we're currently inside a leveraged native-event stack
         _default: function _default(event) {
-          return nodeName(event.target, "a");
+          var target = event.target;
+          return rcheckableType.test(target.type) && target.click && nodeName(target, "input") && dataPriv.get(target, "click") || nodeName(target, "a");
         }
       },
       beforeunload: {
@@ -9948,7 +10411,83 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
         }
       }
     }
-  };
+  }; // Ensure the presence of an event listener that handles manually-triggered
+  // synthetic events by interrupting progress until reinvoked in response to
+  // *native* events that it fires directly, ensuring that state changes have
+  // already occurred before other listeners are invoked.
+
+  function leverageNative(el, type, expectSync) {
+    // Missing expectSync indicates a trigger call, which must force setup through jQuery.event.add
+    if (!expectSync) {
+      if (dataPriv.get(el, type) === undefined) {
+        jQuery.event.add(el, type, returnTrue);
+      }
+
+      return;
+    } // Register the controller as a special universal handler for all event namespaces
+
+
+    dataPriv.set(el, type, false);
+    jQuery.event.add(el, type, {
+      namespace: false,
+      handler: function handler(event) {
+        var notAsync,
+            result,
+            saved = dataPriv.get(this, type);
+
+        if (event.isTrigger & 1 && this[type]) {
+          // Interrupt processing of the outer synthetic .trigger()ed event
+          // Saved data should be false in such cases, but might be a leftover capture object
+          // from an async native handler (gh-4350)
+          if (!saved.length) {
+            // Store arguments for use when handling the inner native event
+            // There will always be at least one argument (an event object), so this array
+            // will not be confused with a leftover capture object.
+            saved = _slice.call(arguments);
+            dataPriv.set(this, type, saved); // Trigger the native event and capture its result
+            // Support: IE <=9 - 11+
+            // focus() and blur() are asynchronous
+
+            notAsync = expectSync(this, type);
+            this[type]();
+            result = dataPriv.get(this, type);
+
+            if (saved !== result || notAsync) {
+              dataPriv.set(this, type, false);
+            } else {
+              result = {};
+            }
+
+            if (saved !== result) {
+              // Cancel the outer synthetic event
+              event.stopImmediatePropagation();
+              event.preventDefault();
+              return result.value;
+            } // If this is an inner synthetic event for an event with a bubbling surrogate
+            // (focus or blur), assume that the surrogate already propagated from triggering the
+            // native event and prevent that from happening again here.
+            // This technically gets the ordering wrong w.r.t. to `.trigger()` (in which the
+            // bubbling surrogate propagates *after* the non-bubbling base), but that seems
+            // less bad than duplication.
+
+          } else if ((jQuery.event.special[type] || {}).delegateType) {
+            event.stopPropagation();
+          } // If this is a native event triggered above, everything is now in order
+          // Fire an inner synthetic event with the original arguments
+
+        } else if (saved.length) {
+          // ...and capture the result
+          dataPriv.set(this, type, {
+            value: jQuery.event.trigger( // Support: IE <=9 - 11+
+            // Extend with the prototype to reset the above stopImmediatePropagation()
+            jQuery.extend(saved[0], jQuery.Event.prototype), saved.slice(1), this)
+          }); // Abort handling of the native event
+
+          event.stopImmediatePropagation();
+        }
+      }
+    });
+  }
 
   jQuery.removeEvent = function (elem, type, handle) {
     // This "if" is needed for plain objects
@@ -10042,6 +10581,7 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
     shiftKey: true,
     view: true,
     "char": true,
+    code: true,
     charCode: true,
     key: true,
     keyCode: true,
@@ -10084,7 +10624,30 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
 
       return event.which;
     }
-  }, jQuery.event.addProp); // Create mouseenter/leave events using mouseover/out and event-time checks
+  }, jQuery.event.addProp);
+  jQuery.each({
+    focus: "focusin",
+    blur: "focusout"
+  }, function (type, delegateType) {
+    jQuery.event.special[type] = {
+      // Utilize native event if possible so blur/focus sequence is correct
+      setup: function setup() {
+        // Claim the first handler
+        // dataPriv.set( this, "focus", ... )
+        // dataPriv.set( this, "blur", ... )
+        leverageNative(this, type, expectSync); // Return false to allow normal processing in the caller
+
+        return false;
+      },
+      trigger: function trigger() {
+        // Force setup before trigger
+        leverageNative(this, type); // Return non-false to allow normal event-path propagation
+
+        return true;
+      },
+      delegateType: delegateType
+    };
+  }); // Create mouseenter/leave events using mouseover/out and event-time checks
   // so that event delegation works in jQuery.
   // Do the same for pointerenter/pointerleave and pointerover/pointerout
   //
@@ -10311,11 +10874,13 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
             if (rscriptType.test(node.type || "") && !dataPriv.access(node, "globalEval") && jQuery.contains(doc, node)) {
               if (node.src && (node.type || "").toLowerCase() !== "module") {
                 // Optional AJAX dependency, but won't run scripts if not present
-                if (jQuery._evalUrl) {
-                  jQuery._evalUrl(node.src);
+                if (jQuery._evalUrl && !node.noModule) {
+                  jQuery._evalUrl(node.src, {
+                    nonce: node.nonce || node.getAttribute("nonce")
+                  });
                 }
               } else {
-                DOMEval(node.textContent.replace(rcleanScript, ""), doc, node);
+                DOMEval(node.textContent.replace(rcleanScript, ""), node, doc);
               }
             }
           }
@@ -10337,7 +10902,7 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
       }
 
       if (node.parentNode) {
-        if (keepData && jQuery.contains(node.ownerDocument, node)) {
+        if (keepData && isAttached(node)) {
           setGlobalEval(getAll(node, "script"));
         }
 
@@ -10358,7 +10923,7 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
           srcElements,
           destElements,
           clone = elem.cloneNode(true),
-          inPage = jQuery.contains(elem.ownerDocument, elem); // Fix IE cloning issues
+          inPage = isAttached(elem); // Fix IE cloning issues
 
       if (!support.noCloneChecked && (elem.nodeType === 1 || elem.nodeType === 11) && !jQuery.isXMLDoc(elem)) {
         // We eschew Sizzle here for performance reasons: https://jsperf.com/getall-vs-sizzle/2
@@ -10612,9 +11177,11 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
 
       boxSizingReliableVal = roundPixelMeasures(divStyle.width) === 36; // Support: IE 9 only
       // Detect overflow:scroll screwiness (gh-3699)
+      // Support: Chrome <=64
+      // Don't get tricked when zoom affects offsetWidth (gh-4029)
 
       div.style.position = "absolute";
-      scrollboxSizeVal = div.offsetWidth === 36 || "absolute";
+      scrollboxSizeVal = roundPixelMeasures(div.offsetWidth / 3) === 12;
       documentElement.removeChild(container); // Nullify the div so it wouldn't be stored in the memory and
       // it will also be a sign that checks already performed
 
@@ -10683,7 +11250,7 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
     if (computed) {
       ret = computed.getPropertyValue(name) || computed[name];
 
-      if (ret === "" && !jQuery.contains(elem.ownerDocument, elem)) {
+      if (ret === "" && !isAttached(elem)) {
         ret = jQuery.style(elem, name);
       } // A tribute to the "awesome hack by Dean Edwards"
       // Android Browser returns percentage for some values,
@@ -10729,6 +11296,39 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
     };
   }
 
+  var cssPrefixes = ["Webkit", "Moz", "ms"],
+      emptyStyle = document.createElement("div").style,
+      vendorProps = {}; // Return a vendor-prefixed property or undefined
+
+  function vendorPropName(name) {
+    // Check for vendor prefixed names
+    var capName = name[0].toUpperCase() + name.slice(1),
+        i = cssPrefixes.length;
+
+    while (i--) {
+      name = cssPrefixes[i] + capName;
+
+      if (name in emptyStyle) {
+        return name;
+      }
+    }
+  } // Return a potentially-mapped jQuery.cssProps or vendor prefixed property
+
+
+  function finalPropName(name) {
+    var _final = jQuery.cssProps[name] || vendorProps[name];
+
+    if (_final) {
+      return _final;
+    }
+
+    if (name in emptyStyle) {
+      return name;
+    }
+
+    return vendorProps[name] = vendorPropName(name) || name;
+  }
+
   var // Swappable if display is none or starts with table
   // except "table", "table-cell", or "table-caption"
   // See here for display values: https://developer.mozilla.org/en-US/docs/CSS/display
@@ -10742,40 +11342,7 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
       cssNormalTransform = {
     letterSpacing: "0",
     fontWeight: "400"
-  },
-      cssPrefixes = ["Webkit", "Moz", "ms"],
-      emptyStyle = document.createElement("div").style; // Return a css property mapped to a potentially vendor prefixed property
-
-  function vendorPropName(name) {
-    // Shortcut for names that are not vendor prefixed
-    if (name in emptyStyle) {
-      return name;
-    } // Check for vendor prefixed names
-
-
-    var capName = name[0].toUpperCase() + name.slice(1),
-        i = cssPrefixes.length;
-
-    while (i--) {
-      name = cssPrefixes[i] + capName;
-
-      if (name in emptyStyle) {
-        return name;
-      }
-    }
-  } // Return a property mapped along what jQuery.cssProps suggests or to
-  // a vendor prefixed property.
-
-
-  function finalPropName(name) {
-    var ret = jQuery.cssProps[name];
-
-    if (!ret) {
-      ret = jQuery.cssProps[name] = vendorPropName(name) || name;
-    }
-
-    return ret;
-  }
+  };
 
   function setPositiveNumber(elem, value, subtract) {
     // Any relative (+/-) values have already been
@@ -10829,7 +11396,9 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
     if (!isBorderBox && computedVal >= 0) {
       // offsetWidth/offsetHeight is a rounded sum of content, padding, scroll gutter, and border
       // Assuming integer scroll gutter, subtract the rest and round down
-      delta += Math.max(0, Math.ceil(elem["offset" + dimension[0].toUpperCase() + dimension.slice(1)] - computedVal - delta - extra - 0.5));
+      delta += Math.max(0, Math.ceil(elem["offset" + dimension[0].toUpperCase() + dimension.slice(1)] - computedVal - delta - extra - 0.5 // If offsetWidth/offsetHeight is unknown, then we can't determine content-box scroll gutter
+      // Use an explicit zero to avoid NaN (gh-3964)
+      )) || 0;
     }
 
     return delta;
@@ -10838,9 +11407,13 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
   function getWidthOrHeight(elem, dimension, extra) {
     // Start with computed style
     var styles = getStyles(elem),
+        // To avoid forcing a reflow, only fetch boxSizing if we need it (gh-4322).
+    // Fake content-box until we know it's needed to know the true value.
+    boxSizingNeeded = !support.boxSizingReliable() || extra,
+        isBorderBox = boxSizingNeeded && jQuery.css(elem, "boxSizing", false, styles) === "border-box",
+        valueIsBorderBox = isBorderBox,
         val = curCSS(elem, dimension, styles),
-        isBorderBox = jQuery.css(elem, "boxSizing", false, styles) === "border-box",
-        valueIsBorderBox = isBorderBox; // Support: Firefox <=54
+        offsetProp = "offset" + dimension[0].toUpperCase() + dimension.slice(1); // Support: Firefox <=54
     // Return a confounding non-pixel value or feign ignorance, as appropriate.
 
     if (rnumnonpx.test(val)) {
@@ -10849,19 +11422,26 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
       }
 
       val = "auto";
-    } // Check for style in case a browser which returns unreliable values
-    // for getComputedStyle silently falls back to the reliable elem.style
-
-
-    valueIsBorderBox = valueIsBorderBox && (support.boxSizingReliable() || val === elem.style[dimension]); // Fall back to offsetWidth/offsetHeight when value is "auto"
+    } // Fall back to offsetWidth/offsetHeight when value is "auto"
     // This happens for inline elements with no explicit setting (gh-3571)
     // Support: Android <=4.1 - 4.3 only
     // Also use offsetWidth/offsetHeight for misreported inline dimensions (gh-3602)
+    // Support: IE 9-11 only
+    // Also use offsetWidth/offsetHeight for when box sizing is unreliable
+    // We use getClientRects() to check for hidden/disconnected.
+    // In those cases, the computed value can be trusted to be border-box
 
-    if (val === "auto" || !parseFloat(val) && jQuery.css(elem, "display", false, styles) === "inline") {
-      val = elem["offset" + dimension[0].toUpperCase() + dimension.slice(1)]; // offsetWidth/offsetHeight provide border-box values
 
-      valueIsBorderBox = true;
+    if ((!support.boxSizingReliable() && isBorderBox || val === "auto" || !parseFloat(val) && jQuery.css(elem, "display", false, styles) === "inline") && elem.getClientRects().length) {
+      isBorderBox = jQuery.css(elem, "boxSizing", false, styles) === "border-box"; // Where available, offsetWidth/offsetHeight approximate border box dimensions.
+      // Where not available (e.g., SVG), assume unreliable box-sizing and interpret the
+      // retrieved value as a content box dimension.
+
+      valueIsBorderBox = offsetProp in elem;
+
+      if (valueIsBorderBox) {
+        val = elem[offsetProp];
+      }
     } // Normalize "" and auto
 
 
@@ -10893,6 +11473,13 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
       "flexGrow": true,
       "flexShrink": true,
       "fontWeight": true,
+      "gridArea": true,
+      "gridColumn": true,
+      "gridColumnEnd": true,
+      "gridColumnStart": true,
+      "gridRow": true,
+      "gridRowEnd": true,
+      "gridRowStart": true,
       "lineHeight": true,
       "opacity": true,
       "order": true,
@@ -10941,9 +11528,11 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
         if (value == null || value !== value) {
           return;
         } // If a number was passed in, add the unit (except for certain CSS properties)
+        // The isCustomProp check can be removed in jQuery 4.0 when we only auto-append
+        // "px" to a few hardcoded values.
 
 
-        if (type === "number") {
+        if (type === "number" && !isCustomProp) {
           value += ret && ret[3] || (jQuery.cssNumber[origName] ? "" : "px");
         } // background-* props affect original clone's values
 
@@ -11029,11 +11618,16 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
       set: function set(elem, value, extra) {
         var matches,
             styles = getStyles(elem),
-            isBorderBox = jQuery.css(elem, "boxSizing", false, styles) === "border-box",
-            subtract = extra && boxModelAdjustment(elem, dimension, extra, isBorderBox, styles); // Account for unreliable border-box dimensions by comparing offset* to computed and
+            // Only read styles.position if the test has a chance to fail
+        // to avoid forcing a reflow.
+        scrollboxSizeBuggy = !support.scrollboxSize() && styles.position === "absolute",
+            // To avoid forcing a reflow, only fetch boxSizing if we need it (gh-3991)
+        boxSizingNeeded = scrollboxSizeBuggy || extra,
+            isBorderBox = boxSizingNeeded && jQuery.css(elem, "boxSizing", false, styles) === "border-box",
+            subtract = extra ? boxModelAdjustment(elem, dimension, extra, isBorderBox, styles) : 0; // Account for unreliable border-box dimensions by comparing offset* to computed and
         // faking a content-box to get border and padding (gh-3699)
 
-        if (isBorderBox && support.scrollboxSize() === styles.position) {
+        if (isBorderBox && scrollboxSizeBuggy) {
           subtract -= Math.ceil(elem["offset" + dimension[0].toUpperCase() + dimension.slice(1)] - parseFloat(styles[dimension]) - boxModelAdjustment(elem, dimension, "border", false, styles) - 0.5);
         } // Convert to pixels if value adjustment is needed
 
@@ -11175,7 +11769,7 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
         // Use .style if available and use plain properties where available.
         if (jQuery.fx.step[tween.prop]) {
           jQuery.fx.step[tween.prop](tween);
-        } else if (tween.elem.nodeType === 1 && (tween.elem.style[jQuery.cssProps[tween.prop]] != null || jQuery.cssHooks[tween.prop])) {
+        } else if (tween.elem.nodeType === 1 && (jQuery.cssHooks[tween.prop] || tween.elem.style[finalPropName(tween.prop)] != null)) {
           jQuery.style(tween.elem, tween.prop, tween.now + tween.unit);
         } else {
           tween.elem[tween.prop] = tween.now;
@@ -12747,7 +13341,11 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
       // If value is a function, invoke it and use its return value
       var value = isFunction(valueOrFunction) ? valueOrFunction() : valueOrFunction;
       s[s.length] = encodeURIComponent(key) + "=" + encodeURIComponent(value == null ? "" : value);
-    }; // If an array was passed in, assume that it is an array of form elements.
+    };
+
+    if (a == null) {
+      return "";
+    } // If an array was passed in, assume that it is an array of form elements.
 
 
     if (Array.isArray(a) || a.jquery && !jQuery.isPlainObject(a)) {
@@ -13041,7 +13639,7 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
 
           if (conv !== true) {
             // Unless errors are allowed to bubble, catch and return them
-            if (conv && s.throws) {
+            if (conv && s["throws"]) {
               response = conv(response);
             } else {
               try {
@@ -13195,14 +13793,14 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
               responseHeaders = {};
 
               while (match = rheaders.exec(responseHeadersString)) {
-                responseHeaders[match[1].toLowerCase()] = match[2];
+                responseHeaders[match[1].toLowerCase() + " "] = (responseHeaders[match[1].toLowerCase() + " "] || []).concat(match[2]);
               }
             }
 
-            match = responseHeaders[key.toLowerCase()];
+            match = responseHeaders[key.toLowerCase() + " "];
           }
 
-          return match == null ? null : match;
+          return match == null ? null : match.join(", ");
         },
         // Raw string
         getAllResponseHeaders: function getAllResponseHeaders() {
@@ -13544,7 +14142,7 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
     };
   });
 
-  jQuery._evalUrl = function (url) {
+  jQuery._evalUrl = function (url, options) {
     return jQuery.ajax({
       url: url,
       // Make this explicit, since user can override this through ajaxSetup (#11264)
@@ -13553,7 +14151,15 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
       cache: true,
       async: false,
       global: false,
-      "throws": true
+      // Only evaluate the response if it is successful (gh-4126)
+      // dataFilter is not invoked for failure responses, so using it instead
+      // of the default converter is kludgy but it works.
+      converters: {
+        "text script": function textScript() {}
+      },
+      dataFilter: function dataFilter(response) {
+        jQuery.globalEval(response, options);
+      }
     });
   };
 
@@ -13789,13 +14395,13 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
   }); // Bind script tag hack transport
 
   jQuery.ajaxTransport("script", function (s) {
-    // This transport only deals with cross domain requests
-    if (s.crossDomain) {
+    // This transport only deals with cross domain or forced-by-attrs requests
+    if (s.crossDomain || s.scriptAttrs) {
       var script, _callback2;
 
       return {
         send: function send(_, complete) {
-          script = jQuery("<script>").prop({
+          script = jQuery("<script>").attr(s.scriptAttrs || {}).prop({
             charset: s.scriptCharset,
             src: s.url
           }).on("load error", _callback2 = function callback(evt) {
@@ -14394,9 +15000,6 @@ function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterat
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
-"use strict";
-
-
 var root = __webpack_require__(/*! ./_root */ "./node_modules/lodash/_root.js");
 /** Built-in value references. */
 
@@ -14412,9 +15015,6 @@ module.exports = _Symbol;
   \********************************************/
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
 
 var _Symbol = __webpack_require__(/*! ./_Symbol */ "./node_modules/lodash/_Symbol.js"),
     getRawTag = __webpack_require__(/*! ./_getRawTag */ "./node_modules/lodash/_getRawTag.js"),
@@ -14454,10 +15054,7 @@ module.exports = baseGetTag;
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
-"use strict";
-/* WEBPACK VAR INJECTION */(function(global) {
-
-function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof = function _typeof(obj) { return typeof obj; }; } else { _typeof = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof(obj); }
+/* WEBPACK VAR INJECTION */(function(global) {function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof = function _typeof(obj) { return typeof obj; }; } else { _typeof = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof(obj); }
 
 /** Detect free variable `global` from Node.js. */
 var freeGlobal = (typeof global === "undefined" ? "undefined" : _typeof(global)) == 'object' && global && global.Object === Object && global;
@@ -14472,9 +15069,6 @@ module.exports = freeGlobal;
   \*******************************************/
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
 
 var _Symbol = __webpack_require__(/*! ./_Symbol */ "./node_modules/lodash/_Symbol.js");
 /** Used for built-in method references. */
@@ -14533,10 +15127,7 @@ module.exports = getRawTag;
   !*** ./node_modules/lodash/_objectToString.js ***!
   \************************************************/
 /*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
+/***/ (function(module, exports) {
 
 /** Used for built-in method references. */
 var objectProto = Object.prototype;
@@ -14570,9 +15161,6 @@ module.exports = objectToString;
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
-"use strict";
-
-
 function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof = function _typeof(obj) { return typeof obj; }; } else { _typeof = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof(obj); }
 
 var freeGlobal = __webpack_require__(/*! ./_freeGlobal */ "./node_modules/lodash/_freeGlobal.js");
@@ -14593,9 +15181,6 @@ module.exports = root;
   \*****************************************/
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
 
 var isObject = __webpack_require__(/*! ./isObject */ "./node_modules/lodash/isObject.js"),
     now = __webpack_require__(/*! ./now */ "./node_modules/lodash/now.js"),
@@ -14772,6 +15357,7 @@ function debounce(func, wait, options) {
 
       if (maxing) {
         // Handle invocations in a tight loop.
+        clearTimeout(timerId);
         timerId = setTimeout(timerExpired, wait);
         return invokeFunc(lastCallTime);
       }
@@ -14798,10 +15384,7 @@ module.exports = debounce;
   !*** ./node_modules/lodash/isObject.js ***!
   \*****************************************/
 /*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
+/***/ (function(module, exports) {
 
 function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof = function _typeof(obj) { return typeof obj; }; } else { _typeof = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof(obj); }
 
@@ -14845,10 +15428,7 @@ module.exports = isObject;
   !*** ./node_modules/lodash/isObjectLike.js ***!
   \*********************************************/
 /*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
+/***/ (function(module, exports) {
 
 function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof = function _typeof(obj) { return typeof obj; }; } else { _typeof = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof(obj); }
 
@@ -14891,9 +15471,6 @@ module.exports = isObjectLike;
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
-"use strict";
-
-
 function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof = function _typeof(obj) { return typeof obj; }; } else { _typeof = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof(obj); }
 
 var baseGetTag = __webpack_require__(/*! ./_baseGetTag */ "./node_modules/lodash/_baseGetTag.js"),
@@ -14935,9 +15512,6 @@ module.exports = isSymbol;
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
-"use strict";
-
-
 var root = __webpack_require__(/*! ./_root */ "./node_modules/lodash/_root.js");
 /**
  * Gets the timestamp of the number of milliseconds that have elapsed since
@@ -14971,9 +15545,6 @@ module.exports = now;
   \*****************************************/
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
 
 var isObject = __webpack_require__(/*! ./isObject */ "./node_modules/lodash/isObject.js"),
     isSymbol = __webpack_require__(/*! ./isSymbol */ "./node_modules/lodash/isSymbol.js");
@@ -15052,10 +15623,7 @@ module.exports = toNumber;
   !*** (webpack)/buildin/global.js ***!
   \***********************************/
 /*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
+/***/ (function(module, exports) {
 
 function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof = function _typeof(obj) { return typeof obj; }; } else { _typeof = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof(obj); }
 
@@ -15085,10 +15653,7 @@ module.exports = g;
   !*** (webpack)/buildin/module.js ***!
   \***********************************/
 /*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-
+/***/ (function(module, exports) {
 
 module.exports = function (module) {
   if (!module.webpackPolyfill) {

@@ -21,10 +21,18 @@ server.get(
         var TotalsModel = require('*/cartridge/models/totals');
         var URLUtils = require('dw/web/URLUtils');
         var reportingUrlsHelper = require('*/cartridge/scripts/reportingUrls');
+        var validationHelpers = require('*/cartridge/scripts/helpers/basketValidationHelpers');
 
         var currentBasket = BasketMgr.getCurrentBasket();
         var reportingURLs;
+
         if (!currentBasket) {
+            res.redirect(URLUtils.url('Cart-Show'));
+            return next();
+        }
+
+        var validatedProducts = validationHelpers.validateProducts(currentBasket);
+        if (validatedProducts.error) {
             res.redirect(URLUtils.url('Cart-Show'));
             return next();
         }
@@ -34,7 +42,7 @@ server.get(
         } else {
             var rememberMe = false;
             var userName = '';
-            var actionUrl = URLUtils.url('Account-Login', 'checkoutLogin', true);
+            var actionUrl = URLUtils.url('Account-Login', 'rurl', 2);
             var totalsModel = new TotalsModel(currentBasket);
             var details = {
                 subTotal: totalsModel.subTotal,
@@ -84,9 +92,16 @@ server.get(
         var reportingUrlsHelper = require('*/cartridge/scripts/reportingUrls');
         var Locale = require('dw/util/Locale');
         var collections = require('*/cartridge/scripts/util/collections');
+        var validationHelpers = require('*/cartridge/scripts/helpers/basketValidationHelpers');
 
         var currentBasket = BasketMgr.getCurrentBasket();
         if (!currentBasket) {
+            res.redirect(URLUtils.url('Cart-Show'));
+            return next();
+        }
+
+        var validatedProducts = validationHelpers.validateProducts(currentBasket);
+        if (validatedProducts.error) {
             res.redirect(URLUtils.url('Cart-Show'));
             return next();
         }

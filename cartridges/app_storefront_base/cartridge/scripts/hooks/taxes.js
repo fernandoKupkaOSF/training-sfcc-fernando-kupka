@@ -6,16 +6,16 @@ var TaxMgr = require('dw/order/TaxMgr');
 var Logger = require('dw/system/Logger');
 
 /**
- * @typedef {Object} Response
- * @property {[TaxField]} taxes - List of taxes to line items UUIDs to be applied to the order
- * @property {Object} custom - List of custom properties to be attached to the basket
- */
-
-/**
  * @typedef {Object} TaxField
  * @property {string} UUID - ID of the line item
  * @property {number|dw.value.Money} value - Either Tax Code or Tax Amount that should be applied to the line item.
- * @property {boolean="false"} amount - Boolean indicating whether value field contains Tax Amount (true) or Tax Rate (false).
+ * @property {boolean} [amount=false] - Boolean indicating whether value field contains Tax Amount (true) or Tax Rate (false).
+ */
+
+/**
+ * @typedef {Object} Response
+ * @property {Array<TaxField>} taxes - List of taxes to line items UUIDs to be applied to the order
+ * @property {Object} custom - List of custom properties to be attached to the basket
  */
 
 /**
@@ -70,7 +70,7 @@ function calculateTaxes(basket) {
             // get the tax rate
             var taxRate = TaxMgr.getTaxRate(taxClassId, taxJurisdictionId);
             // w/o a valid tax rate, we cannot calculate tax for the line item
-            if (!taxRate) {
+            if (!taxRate && taxRate !== 0) {
                 return;
             }
 

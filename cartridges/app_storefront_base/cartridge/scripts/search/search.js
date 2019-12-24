@@ -12,14 +12,14 @@ function setProductProperties(productSearch, httpParams, selectedCategory, sorti
     var searchPhrase;
 
     if (httpParams.q) {
-        searchPhrase = decodeURIComponent(httpParams.q.replace(/\+/g, '%20'));
+        searchPhrase = httpParams.q;
         productSearch.setSearchPhrase(searchPhrase);
     }
     if (selectedCategory) {
         productSearch.setCategoryID(selectedCategory.ID);
     }
     if (httpParams.pid) {
-        productSearch.setProductID(httpParams.pid);
+        productSearch.setProductIDs([httpParams.pid]);
     }
     if (httpParams.pmin) {
         productSearch.setPriceMin(parseInt(httpParams.pmin, 10));

@@ -127,6 +127,8 @@ server.post('SaveAddress', csrfProtection.validateAjaxRequest, function (req, re
     var CustomerMgr = require('dw/customer/CustomerMgr');
     var Transaction = require('dw/system/Transaction');
     var formErrors = require('*/cartridge/scripts/formErrors');
+    var accountHelpers = require('*/cartridge/scripts/helpers/accountHelpers');
+    var addressHelpers = require('*/cartridge/scripts/helpers/addressHelpers');
 
     var addressForm = server.forms.getForm('address');
     var addressFormObj = addressForm.toObject();
@@ -140,38 +142,23 @@ server.post('SaveAddress', csrfProtection.validateAjaxRequest, function (req, re
         this.on('route:BeforeComplete', function () { // eslint-disable-line no-shadow
             var formInfo = res.getViewData();
             Transaction.wrap(function () {
-                var address = req.querystring.addressId
-                    ? addressBook.getAddress(req.querystring.addressId)
-                    : addressBook.createAddress(formInfo.addressId);
+                var address = null;
+                if (formInfo.addressId.equals(req.querystring.addressId) || !addressBook.getAddress(formInfo.addressId)) {
+                    address = req.querystring.addressId
+                        ? addressBook.getAddress(req.querystring.addressId)
+                        : addressBook.createAddress(formInfo.addressId);
+                }
+
                 if (address) {
                     if (req.querystring.addressId) {
                         address.setID(formInfo.addressId);
                     }
 
-                    address.setAddress1(formInfo.address1 || '');
-                    address.setAddress2(formInfo.address2 || '');
-                    address.setCity(formInfo.city || '');
-                    address.setFirstName(formInfo.firstName || '');
-                    address.setLastName(formInfo.lastName || '');
-                    address.setPhone(formInfo.phone || '');
-                    address.setPostalCode(formInfo.postalCode || '');
+                    // Save form's address
+                    addressHelpers.updateAddressFields(address, formInfo);
 
-                    if (formInfo.states && formInfo.states.stateCode) {
-                        address.setStateCode(formInfo.states.stateCode);
-                    }
-
-                    if (formInfo.country) {
-                        address.setCountryCode(formInfo.country);
-                    }
-
-                    address.setJobTitle(formInfo.jobTitle || '');
-                    address.setPostBox(formInfo.postBox || '');
-                    address.setSalutation(formInfo.salutation || '');
-                    address.setSecondName(formInfo.secondName || '');
-                    address.setCompanyName(formInfo.companyName || '');
-                    address.setSuffix(formInfo.suffix || '');
-                    address.setSuite(formInfo.suite || '');
-                    address.setJobTitle(formInfo.title || '');
+                    // Send account edited email
+                    accountHelpers.sendAccountEditedEmail(customer.profile);
 
                     res.json({
                         success: true,
@@ -184,7 +171,7 @@ server.post('SaveAddress', csrfProtection.validateAjaxRequest, function (req, re
                         Resource.msg('error.message.idalreadyexists', 'forms', null);
                     res.json({
                         success: false,
-                        fields: formErrors(addressForm)
+                        fields: formErrors.getFormErrors(addressForm)
                     });
                 }
             });
@@ -192,7 +179,7 @@ server.post('SaveAddress', csrfProtection.validateAjaxRequest, function (req, re
     } else {
         res.json({
             success: false,
-            fields: formErrors(addressForm)
+            fields: formErrors.getFormErrors(addressForm)
         });
     }
     return next();
@@ -201,6 +188,7 @@ server.post('SaveAddress', csrfProtection.validateAjaxRequest, function (req, re
 server.get('DeleteAddress', userLoggedIn.validateLoggedInAjax, function (req, res, next) {
     var CustomerMgr = require('dw/customer/CustomerMgr');
     var Transaction = require('dw/system/Transaction');
+    var accountHelpers = require('*/cartridge/scripts/helpers/accountHelpers');
 
     var data = res.getViewData();
     if (data && !data.loggedin) {
@@ -226,6 +214,10 @@ server.get('DeleteAddress', userLoggedIn.validateLoggedInAjax, function (req, re
                 addressBook.setPreferredAddress(newDefaultAddress);
             }
         });
+
+        // Send account edited email
+        accountHelpers.sendAccountEditedEmail(customer.profile);
+
         if (length === 0) {
             res.json({
                 UUID: UUID,
@@ -244,6 +236,7 @@ server.get('DeleteAddress', userLoggedIn.validateLoggedInAjax, function (req, re
 server.get('SetDefault', userLoggedIn.validateLoggedIn, function (req, res, next) {
     var CustomerMgr = require('dw/customer/CustomerMgr');
     var Transaction = require('dw/system/Transaction');
+    var accountHelpers = require('*/cartridge/scripts/helpers/accountHelpers');
 
     var addressId = req.querystring.addressId;
     var customer = CustomerMgr.getCustomerByCustomerNumber(
@@ -255,6 +248,10 @@ server.get('SetDefault', userLoggedIn.validateLoggedIn, function (req, res, next
         Transaction.wrap(function () {
             addressBook.setPreferredAddress(address);
         });
+
+        // Send account edited email
+        accountHelpers.sendAccountEditedEmail(customer.profile);
+
         res.redirect(URLUtils.url('Address-List'));
     });
     next();
