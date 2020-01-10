@@ -93,7 +93,7 @@ class WebpackBundle {
                                 includePaths: [
                                     path.resolve(__dirname, "node_modules"),
                                     path.resolve(__dirname, "cartridges"),
-                                    path.resolve('node_modules/flag-icon-css/sass')
+                                    path.resolve("node_modules/flag-icon-css/sass")
                                 ],
                                 sourceMap: devMode,
                                 implementation: require("sass"),
@@ -110,7 +110,6 @@ class WebpackBundle {
             alias: {
                 base: path.resolve(__dirname, "cartridges/app_storefront_base/cartridge/client/default/scss")
             }
-            
         };
 
         bundle.plugins = [
@@ -150,4 +149,3 @@ module.exports = [
     WebpackBundle.forCartridge("app_storefront_base"),
     WebpackBundle.forCartridge("app_storefront_custom")
 ];
-
