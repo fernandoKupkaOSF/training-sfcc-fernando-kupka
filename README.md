@@ -12,10 +12,11 @@
 # Getting Started
 ---------------
 
-1. Clone this repository to your local machine and follow instructions here to configure it properly: https://osfsupport.atlassian.net/wiki/spaces/TRA/pages/308543489/SFRA+Basics
-2. Run `yarn install` to install all of the local dependancies
-3. Run `yarn run webpack:dev` to start watching for file changes and compile JS and SCSS files when that happens
-4. Run `yarn run lint` to run all the code linters or run:
+1. Clone this repository to your local machine and follow instructions here to configure it properly: 
+https://learninghub.osf.digital/mod/page/view.php?id=1792
+3. Run `yarn install` to install all of the local dependancies
+4. Run `yarn run webpack:dev` to start watching for file changes and compile JS and SCSS files when that happens
+5. Run `yarn run lint` to run all the code linters or run:
     * `yarn run lint:js-server` to run only the server side JS linter
     * `yarn run lint:js-client` to run only the client side JS linter
     * `yarn run lint:scss` to run only the SCSS linter
